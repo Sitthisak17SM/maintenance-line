@@ -568,7 +568,7 @@ maintenance-line/
 **`deploy-web.yml`**
 
 - deploy `web/` ขึ้น GitHub Pages
-- พอมี prod แล้ว ให้ build เป็น `_site/` (config ของ prod) กับ `_site/test/` (config ของ test)
+- พอมี prod แล้ว ให้ build เป็น `_site/` (config ของ prod) กับ `_site/test/` (config ของ test) workflow ทำแบบนี้เสมอ ถ้ายังไม่ได้ตั้ง `LIFF_ID_PROD` ทั้ง `/` และ `/test/` ใช้ config ทดสอบใน `web/js/config.js` ส่วน `LIFF_ID_TEST`/`API_URL_TEST` ถ้าตั้งไว้จะใช้แทนค่าในไฟล์สำหรับ `/test/`
 - ค่า config มาจาก repository variables: `LIFF_ID_PROD`, `API_URL_PROD`, `LIFF_ID_TEST`, `API_URL_TEST`
 
 ## 17. การทดสอบ
