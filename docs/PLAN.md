@@ -584,7 +584,7 @@ maintenance-line/
 | ความเสี่ยง | พิสูจน์ในเฟส | ผลทดสอบ | ทางสำรอง |
 |---|---|---|---|
 | Apps Script ตอบ webhook ด้วย 302 ไม่ใช่ 200 | 0 | 30 ต.ค. 2026: `HtmlService.createHtmlOutput` ตอบ 200 ตรง (ไม่ redirect) แต่ใช้เวลา ~1.1 วินาที Verify รอบแรก timeout เพราะเปิดชีตอ่าน Config หลังให้คำขอที่ไม่มี event ตอบทันทีและ cache ENV แล้ว Verify = Success | ถ้า event มาถึงและ doPost ทำงานถือว่าใช้ได้ แม้ปุ่ม Verify จะ error ให้ปิด webhook redelivery และกันซ้ำด้วย webhookEventId |
-| รูปจาก Drive ไม่แสดงในการ์ด Flex | 1 | (กรอกหลังทดสอบ) วิธีทดสอบ: รัน `Dev_smokeTestElec` แล้ว `Dev_testFlexImage` ซึ่ง push การ์ด 2 ใบให้ ADMIN (A = lh3, B = thumbnail) | ตั้ง Config `FLEX_SHOW_PHOTO = FALSE` เพื่อตัดรูปออกจากการ์ด แล้วให้ดูรูปในหน้า LIFF แทน |
+| รูปจาก Drive ไม่แสดงในการ์ด Flex | 1 | 30 ต.ค. 2026: แสดงได้ การ์ด job_new ของ MT-2610-0001 และ 0002 แสดงรูปจาก `lh3.googleusercontent.com/d/{fileId}=w1000` ใน LINE PC (ยังไม่ได้ดูบนมือถือ) จึงคง `FLEX_SHOW_PHOTO = TRUE` (ยังไม่ได้ทดสอบแบบ B = thumbnail เพราะแบบ A ใช้ได้แล้ว) วิธีทดสอบซ้ำ: `Dev_testFlexImage` | ตั้ง Config `FLEX_SHOW_PHOTO = FALSE` เพื่อตัดรูปออกจากการ์ด แล้วให้ดูรูปในหน้า LIFF แทน |
 | ผู้ใช้ไม่ได้เพิ่มเพื่อน OA ทำให้ push ไม่ถึง | 1 | | ตั้ง LIFF Add friend option เป็น On (aggressive) |
 | อัปโหลดรูปช้าหรือเกินเวลา | 1 | | ย่อรูปที่มือถือก่อน และจำกัดจำนวนกับขนาด |
 | ข้อความเกินโควตาฟรี 300 ต่อเดือน | 2 | | ใช้ reply แทน push, รวมการเตือนเป็นข้อความเดียว หรืออัปเกรดเป็น Basic |
