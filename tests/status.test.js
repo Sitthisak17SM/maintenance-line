@@ -326,8 +326,30 @@ test('ack: a MANAGER without a branch cannot ack a job with no branch', () => {
 
 test('VIEWER cannot run any action in any status', () => {
   for (const m of MATRIX) {
-    for (const s of ALL_STATUSES) assert.throws(() => run(job(s), m.action, U.viewer));
+    for (const s of ALL_STATUSES) assertCode(() => run(job(s), m.action, U.viewer), 'FORBIDDEN');
   }
+});
+
+// PLAN §3: permission is checked before status, so an outsider never learns the job's state
+// (and a stranger tapping a stale card gets FORBIDDEN, not CONFLICT).
+test('permission is checked before status', () => {
+  assertCode(() => run(job('CLOSED'), 'accept', U.techOther), 'FORBIDDEN');
+  assertCode(() => run(job('DONE'), 'checkin', U.tech2), 'FORBIDDEN');
+  assertCode(() => run(job('CLOSED'), 'reject', U.reporter), 'FORBIDDEN');
+  assertCode(() => run(job('CANCELLED'), 'forward', U.techOther), 'FORBIDDEN');
+  assertCode(() => run(job('ASSIGNED'), 'ack', U.staffOther), 'FORBIDDEN');
+  assertCode(() => run(job('CLOSED'), 'reassign', U.tech1), 'FORBIDDEN');
+  // Same actors with the right permission get the status error instead.
+  assertCode(() => run(job('CLOSED'), 'accept', U.tech1), 'CONFLICT');
+  assertCode(() => run(job('DONE'), 'checkin', U.tech1), 'INVALID_STATE');
+});
+
+// Hand-typed sheet cells can carry a stray tab or space (seen in phase 1 testing).
+test('ids stored with stray whitespace still match the actor', () => {
+  const j = job('DONE', { reporter_id: 'U_REP\t', assignee_id: ' U_T1 ', candidate_ids: 'U_T1\t, U_T2' });
+  assert.equal(run(j, 'ack', U.reporter).status, 'CLOSED');
+  assert.equal(Status_canView(j, U.tech1), true);
+  assert.equal(run(job('ACCEPTED', { assignee_id: 'U_T1\t' }), 'checkin', U.tech1).status, 'IN_PROGRESS');
 });
 
 // --- view / list / allowed actions --------------------------------------------

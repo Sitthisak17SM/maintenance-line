@@ -280,11 +280,11 @@ function Status_isOpen(status) {
 }
 
 function Status_isReporter(job, a) {
-  return !!job && String(job.reporter_id || '') === a.userId;
+  return !!job && String(job.reporter_id || '').trim() === a.userId;
 }
 
 function Status_isAssignee(job, a) {
-  return !!job && String(job.assignee_id || '') === a.userId;
+  return !!job && String(job.assignee_id || '').trim() === a.userId;
 }
 
 function Status_isCandidate(job, a) {
