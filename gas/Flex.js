@@ -1,5 +1,252 @@
-// LINE Flex card builders (PLAN §8).
+// LINE Flex card builders (PLAN §8). Every builder returns one message object.
+// `ref` carries display names: {branchName, categoryName} (see Jobs_ref_).
 
-function Flex_jobNew(job) {
-  throw new Error('Flex_jobNew: not implemented (phase 1)');
+const FLEX_PRIORITY_COLOR = { EMERGENCY: '#D32F2F', URGENT: '#F57C00', NORMAL: '#1976D2', PREVENTIVE: '#757575' };
+const FLEX_DETAIL_MAX = 120;
+const FLEX_ALT_MAX = 400;
+const FLEX_MUTED = '#888888';
+
+function Flex_welcome() {
+  return Flex_message_('ยินดีต้อนรับสู่ระบบแจ้งซ่อม กรุณาลงทะเบียนก่อนใช้งาน', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('ยินดีต้อนรับสู่ระบบแจ้งซ่อม', { weight: 'bold', size: 'lg' }),
+      Flex_text_('กรุณาลงทะเบียนชื่อ เบอร์โทร และร้านของคุณก่อนเริ่มแจ้งซ่อม', { size: 'sm', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('ลงทะเบียน', Flex_liffUrl('register.html'), true)]),
+  });
+}
+
+/**
+ * New job for candidates (create, forward, reassign).
+ * opts: {note: shown above the job (e.g. forward reason), photoUrl: hero image or ''}.
+ */
+function Flex_jobNew(job, ref, opts) {
+  opts = opts || {};
+  const id = String(job.job_id);
+  const contents = [
+    Flex_idRow_(job),
+    opts.note ? Flex_text_(opts.note, { size: 'sm', color: '#E65100', weight: 'bold' }) : null,
+    Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+    Flex_text_('หมวด: ' + (ref.categoryName || job.category_code), { size: 'sm', color: FLEX_MUTED }),
+    Flex_text_(job.title, { weight: 'bold', size: 'md' }),
+    job.detail ? Flex_text_(Flex_truncate_(job.detail, FLEX_DETAIL_MAX), { size: 'sm' }) : null,
+    Flex_separator_(),
+    Flex_text_('ผู้แจ้ง: ' + (job.reporter_name || '-') + (job.reporter_phone ? ' (' + job.reporter_phone + ')' : '') +
+      ' · ' + Flex_date(job.created_at), { size: 'xs', color: FLEX_MUTED }),
+    Flex_text_('ต้องเข้าหน้างานภายใน ' + Flex_date(job.response_due_at), { size: 'sm', weight: 'bold', color: '#D32F2F' }),
+  ];
+  const bubble = {
+    type: 'bubble',
+    body: Flex_box_(contents),
+    footer: Flex_box_([
+      Flex_postbackButton_('รับงาน', 'a=accept&j=' + id, 'รับงาน ' + id, true),
+      Flex_uriButton_('ปฏิเสธ', Flex_liffUrl('job.html', { id: id, do: 'reject' })),
+      Flex_uriButton_('รายละเอียด', Flex_liffUrl('job.html', { id: id })),
+    ]),
+  };
+  if (opts.photoUrl) {
+    bubble.hero = {
+      type: 'image', url: opts.photoUrl, size: 'full', aspectRatio: '20:13', aspectMode: 'cover',
+      action: { type: 'uri', label: 'ดูรูป', uri: Flex_liffUrl('job.html', { id: id }) },
+    };
+  }
+  return Flex_message_('งานซ่อมใหม่ ' + id + ': ' + job.title, bubble);
+}
+
+/** Reply to the reporter after liff.sendMessages(job_id). */
+function Flex_jobReceived(job, ref) {
+  const id = String(job.job_id);
+  return Flex_message_('รับเรื่องแจ้งซ่อม ' + id + ' แล้ว', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('รับเรื่องแจ้งซ่อมแล้ว', { weight: 'bold', size: 'lg', color: '#2E7D32' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_text_('สถานะ: ' + Flex_statusLabel_(job.status), { size: 'sm' }),
+      Flex_text_('ช่างจะเข้าหน้างานภายใน ' + Flex_date(job.response_due_at), { size: 'sm', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('ดูสถานะ', Flex_liffUrl('job.html', { id: id }), true)]),
+  });
+}
+
+/** Reply to whoever tapped "รับงาน": a card on success, the error text otherwise. */
+function Flex_acceptResult(job, errorMessage) {
+  if (errorMessage) return Line_text(errorMessage);
+  const id = String(job.job_id);
+  return Flex_message_('รับงาน ' + id + ' แล้ว', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('รับงานแล้ว', { weight: 'bold', size: 'lg', color: '#2E7D32' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_('ต้องเข้าหน้างานภายใน ' + Flex_date(job.response_due_at), { size: 'sm', color: '#D32F2F' }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('เปิดงาน', Flex_liffUrl('job.html', { id: id }), true)]),
+  });
+}
+
+/** Push to ADMINs when a candidate or assignee rejects. */
+function Flex_jobRejected(job, ref, reason, byName) {
+  const id = String(job.job_id);
+  return Flex_message_('ช่างปฏิเสธงาน ' + id + ': ' + reason, {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('ช่างปฏิเสธงาน', { weight: 'bold', size: 'lg', color: '#D32F2F' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_separator_(),
+      Flex_text_('โดย: ' + (byName || '-'), { size: 'sm' }),
+      Flex_text_('เหตุผล: ' + reason, { size: 'sm' }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('จ่ายงานใหม่', Flex_liffUrl('admin.html', { id: id }), true)]),
+  });
+}
+
+/** Push to the reporter (or branch MANAGERs) when the job is closed by the technician. */
+function Flex_jobDone(job, ref) {
+  const id = String(job.job_id);
+  const cost = Number(job.cost_total) || 0;
+  return Flex_message_('งานซ่อม ' + id + ' เสร็จแล้ว กรุณากดรับทราบงาน', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('งานซ่อมเสร็จแล้ว', { weight: 'bold', size: 'lg', color: '#2E7D32' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_separator_(),
+      Flex_text_('สาเหตุ: ' + job.cause, { size: 'sm' }),
+      Flex_text_('วิธีแก้ไข: ' + job.fix, { size: 'sm' }),
+      Flex_text_('ค่าใช้จ่าย: ' + cost.toLocaleString('en-US') + ' บาท', { size: 'sm' }),
+      job.onsite_note ? Flex_text_('หมายเหตุ: ' + job.onsite_note, { size: 'sm', color: FLEX_MUTED }) : null,
+      Flex_text_('ช่าง: ' + (job.assignee_name || job.vendor || '-') + ' · ' + Flex_date(job.done_at), { size: 'xs', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([
+      Flex_postbackButton_('รับทราบงาน', 'a=ack&j=' + id, 'รับทราบงาน ' + id, true),
+      Flex_uriButton_('รายละเอียด', Flex_liffUrl('job.html', { id: id })),
+    ]),
+  });
+}
+
+/** Reply to whoever tapped "รับทราบงาน". */
+function Flex_ackResult(job, errorMessage) {
+  if (errorMessage) return Line_text(errorMessage);
+  return Line_text('รับทราบงาน ' + job.job_id + ' แล้ว ปิดงานเรียบร้อย');
+}
+
+/** Reply to "งานของฉัน": up to 5 open jobs, each row opens the job page. */
+function Flex_myJobs(jobs, total) {
+  if (!jobs.length) return Line_text('ไม่มีงานที่ยังเปิดอยู่');
+  const rows = [Flex_text_('งานของฉันที่ยังเปิดอยู่ (' + total + ')', { weight: 'bold', size: 'md' })];
+  jobs.forEach(function (job) {
+    rows.push(Flex_separator_());
+    rows.push({
+      type: 'box', layout: 'vertical', spacing: 'xs',
+      action: { type: 'uri', label: 'เปิดงาน', uri: Flex_liffUrl('job.html', { id: String(job.job_id) }) },
+      contents: [
+        Flex_text_(job.job_id + ' · ' + Flex_statusLabel_(job.status), { size: 'xs', color: FLEX_MUTED }),
+        Flex_text_(job.title, { size: 'sm', weight: 'bold' }),
+      ],
+    });
+  });
+  return Flex_message_('งานของฉันที่ยังเปิดอยู่ ' + total + ' งาน', {
+    type: 'bubble',
+    body: Flex_box_(rows),
+    footer: Flex_box_([Flex_uriButton_('ดูทั้งหมด', Flex_liffUrl('jobs.html'), false)]),
+  });
+}
+
+function Flex_help() {
+  return Line_text('พิมพ์ "งานของฉัน" เพื่อดูงานที่ยังเปิดอยู่ หรือกดเมนู "แจ้งซ่อม" ด้านล่างเพื่อแจ้งงานใหม่');
+}
+
+function Flex_notRegistered() {
+  return Flex_message_('กรุณาลงทะเบียนก่อนใช้งาน', {
+    type: 'bubble',
+    body: Flex_box_([Flex_text_('คุณยังไม่ได้ลงทะเบียน หรือบัญชีถูกปิดใช้งาน', { size: 'sm' })]),
+    footer: Flex_box_([Flex_uriButton_('ลงทะเบียน', Flex_liffUrl('register.html'), true)]),
+  });
+}
+
+/** https://liff.line.me/{LIFF_ID}/{page}?{params} (PLAN §9). */
+function Flex_liffUrl(page, params) {
+  const liffId = (PropertiesService.getScriptProperties().getProperty('LIFF_ID') || '').trim();
+  if (!liffId) throw new Error('LIFF_ID is not set');
+  const qs = Object.keys(params || {}).map(function (k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }).join('&');
+  return 'https://liff.line.me/' + liffId + '/' + page + (qs ? '?' + qs : '');
+}
+
+/** dd/MM/yy HH:mm in Asia/Bangkok; '-' when empty. */
+function Flex_date(value) {
+  if (value === '' || value === null || value === undefined) return '-';
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  return Utilities.formatDate(d, 'Asia/Bangkok', 'dd/MM/yy HH:mm');
+}
+
+// --- building blocks --------------------------------------------------------------
+
+function Flex_message_(altText, bubble) {
+  return { type: 'flex', altText: Flex_truncate_(altText, FLEX_ALT_MAX), contents: bubble };
+}
+
+function Flex_box_(contents) {
+  return { type: 'box', layout: 'vertical', spacing: 'sm', contents: contents.filter(Boolean) };
+}
+
+/** LINE rejects empty text components, so blanks become '-'. */
+function Flex_text_(text, style) {
+  const value = String(text === undefined || text === null ? '' : text).trim();
+  return Object.assign({ type: 'text', text: value || '-', wrap: true }, style || {});
+}
+
+function Flex_separator_() {
+  return { type: 'separator', margin: 'md' };
+}
+
+function Flex_idRow_(job) {
+  const priority = String(job.priority || '');
+  return {
+    type: 'box', layout: 'horizontal', spacing: 'sm',
+    contents: [
+      Flex_text_(job.job_id, { weight: 'bold', size: 'sm', flex: 0, gravity: 'center' }),
+      {
+        type: 'box', layout: 'vertical', flex: 0, cornerRadius: 'sm', paddingAll: 'xs',
+        paddingStart: 'sm', paddingEnd: 'sm', backgroundColor: FLEX_PRIORITY_COLOR[priority] || '#757575',
+        contents: [Flex_text_(priority || '-', { size: 'xxs', color: '#FFFFFF', weight: 'bold', wrap: false })],
+      },
+    ],
+  };
+}
+
+function Flex_uriButton_(label, uri, primary) {
+  return {
+    type: 'button', style: primary ? 'primary' : 'secondary', height: 'sm',
+    action: { type: 'uri', label: label, uri: uri },
+  };
+}
+
+function Flex_postbackButton_(label, data, displayText, primary) {
+  return {
+    type: 'button', style: primary ? 'primary' : 'secondary', height: 'sm',
+    action: { type: 'postback', label: label, data: data, displayText: displayText },
+  };
+}
+
+function Flex_where_(job, ref) {
+  const branch = (ref && ref.branchName) || job.branch_code || '-';
+  return job.area ? branch + ' · ' + job.area : branch;
+}
+
+function Flex_statusLabel_(status) {
+  return STATUS_LABEL_TH[status] || String(status || '-');
+}
+
+function Flex_truncate_(text, max) {
+  const s = String(text === undefined || text === null ? '' : text);
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
