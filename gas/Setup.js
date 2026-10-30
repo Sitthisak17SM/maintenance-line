@@ -1,8 +1,9 @@
 // One-time setup (PLAN §4). Safe to re-run: existing spreadsheet, tabs, headers,
 // rows and folder are kept; only what is missing gets created.
 
-const SETUP_SPREADSHEET_NAME = 'Maintenance LINE (test)';
-const SETUP_DRIVE_FOLDER_NAME = 'Maintenance LINE (test) photos';
+// The environment comes from the Apps Script project name: "Maintenance LINE (prod)" sets up
+// the real sheet (ENV=prod), anything else the test one (PLAN §16).
+const SETUP_NAME_PREFIX = 'Maintenance LINE';
 
 const SETUP_TABS = {
   Jobs: [
@@ -97,17 +98,24 @@ const SETUP_SEED = {
 
 function Setup_init() {
   const props = PropertiesService.getScriptProperties();
-  const ss = Setup_spreadsheet_(props);
+  const env = Setup_env_();
+  const ss = Setup_spreadsheet_(props, env);
   const created = [];
   Object.keys(SETUP_TABS).forEach(function (name) {
-    if (Setup_ensureTab_(ss, name)) created.push(name);
+    if (Setup_ensureTab_(ss, name, env)) created.push(name);
   });
-  const folder = Setup_driveFolder_(props);
-  console.log('Setup_init done. Sheet: %s | Folder: %s | New tabs: %s',
-    ss.getUrl(), folder.getUrl(), created.length ? created.join(', ') : '(none)');
+  const folder = Setup_driveFolder_(props, env);
+  console.log('Setup_init done (ENV=%s). Sheet: %s | Folder: %s | New tabs: %s',
+    env, ss.getUrl(), folder.getUrl(), created.length ? created.join(', ') : '(none)');
 }
 
-function Setup_spreadsheet_(props) {
+/** 'prod' when this Apps Script project's name contains "(prod)", otherwise 'test'. */
+function Setup_env_() {
+  const name = DriveApp.getFileById(ScriptApp.getScriptId()).getName();
+  return /\(prod\)/i.test(name) ? 'prod' : 'test';
+}
+
+function Setup_spreadsheet_(props, env) {
   const id = props.getProperty('SHEET_ID');
   if (id) {
     try {
@@ -117,7 +125,7 @@ function Setup_spreadsheet_(props) {
       throw new Error('SHEET_ID is set but cannot be opened (' + err.message + '). Fix or delete SHEET_ID, then re-run.');
     }
   }
-  const ss = SpreadsheetApp.create(SETUP_SPREADSHEET_NAME);
+  const ss = SpreadsheetApp.create(SETUP_NAME_PREFIX + ' (' + env + ')');
   ss.setSpreadsheetTimeZone('Asia/Bangkok');
   ss.getSheets()[0].setName('Jobs'); // reuse the default blank sheet
   props.setProperty('SHEET_ID', ss.getId());
@@ -125,7 +133,7 @@ function Setup_spreadsheet_(props) {
 }
 
 /** Creates the tab with headers and seed rows if missing. Returns true when the tab was created. */
-function Setup_ensureTab_(ss, name) {
+function Setup_ensureTab_(ss, name, env) {
   const headers = SETUP_TABS[name];
   let sheet = ss.getSheetByName(name);
   const isNew = !sheet;
@@ -145,14 +153,15 @@ function Setup_ensureTab_(ss, name) {
     if (col > 0) sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat('@');
   });
 
-  const seed = SETUP_SEED[name];
+  // Config ENV follows the project (only written into a brand-new Config tab).
+  const seed = name === 'Config' ? SETUP_SEED.Config.map(function (r) { return r[0] === 'ENV' ? [r[0], env, r[2]] : r; }) : SETUP_SEED[name];
   if (seed && sheet.getLastRow() <= 1) {
     sheet.getRange(2, 1, seed.length, seed[0].length).setValues(seed);
   }
   return isNew;
 }
 
-function Setup_driveFolder_(props) {
+function Setup_driveFolder_(props, env) {
   const id = props.getProperty('DRIVE_FOLDER_ID');
   if (id) {
     try {
@@ -161,7 +170,7 @@ function Setup_driveFolder_(props) {
       throw new Error('DRIVE_FOLDER_ID is set but cannot be opened (' + err.message + '). Fix or delete it, then re-run.');
     }
   }
-  const folder = DriveApp.createFolder(SETUP_DRIVE_FOLDER_NAME);
+  const folder = DriveApp.createFolder(SETUP_NAME_PREFIX + ' (' + env + ') photos');
   props.setProperty('DRIVE_FOLDER_ID', folder.getId());
   return folder;
 }
