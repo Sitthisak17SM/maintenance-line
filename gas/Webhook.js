@@ -6,7 +6,10 @@ const WEBHOOK_ENV_CACHE_SECONDS = 600; // a Config ENV change takes up to 10 min
 
 function Webhook_handle(e) {
   const expected = PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY');
-  if (!expected || e.parameter.key !== expected) return Webhook_ok_();
+  if (!expected || e.parameter.key !== expected) {
+    console.warn(expected ? 'Webhook: key mismatch' : 'Webhook: WEBHOOK_KEY is not set');
+    return Webhook_ok_();
+  }
 
   let events = [];
   try {
@@ -30,7 +33,11 @@ function Webhook_handle(e) {
 }
 
 function Webhook_handleEvent_(event, isTest) {
-  if (Webhook_isDuplicate_(event.webhookEventId)) return;
+  if (Webhook_isDuplicate_(event.webhookEventId)) {
+    console.log('Webhook: duplicate event %s skipped', event.webhookEventId);
+    return;
+  }
+  console.log('Webhook: %s event from %s', event.type, event.source && event.source.type);
 
   if (event.source && event.source.type === 'user') {
     if (event.type === 'follow') {
