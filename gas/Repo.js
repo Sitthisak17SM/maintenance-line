@@ -79,6 +79,23 @@ function Repo_findBy(name, header, value) {
   return { rowIndex: rowIndex, record: Repo_toObject_(headers, row) };
 }
 
+/** Every row whose `header` cell equals `value` exactly, in sheet order. */
+function Repo_findAllBy(name, header, value) {
+  const key = String(value === undefined || value === null ? '' : value).trim();
+  if (!key) return [];
+  const sheet = Repo_sheet(name);
+  const headers = Repo_headersOf_(name);
+  const col = headers.indexOf(header) + 1;
+  if (col === 0) throw new Error('Tab ' + name + ' has no column ' + header);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, col, lastRow - 1, 1).createTextFinder(key)
+    .matchCase(true).matchEntireCell(true).findAll()
+    .map(function (cell) {
+      return Repo_toObject_(headers, sheet.getRange(cell.getRow(), 1, 1, headers.length).getValues()[0]);
+    });
+}
+
 /** Writes `changes` (by header) into one row; other cells keep their values. Returns the merged record. */
 function Repo_update(name, rowIndex, changes) {
   return Repo_withLock(function () {
