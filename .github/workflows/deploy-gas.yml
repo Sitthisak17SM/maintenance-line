@@ -46,6 +46,18 @@ jobs:
           if [ -z "$CLASPRC_JSON" ]; then echo "Secret CLASPRC_JSON is not set"; exit 1; fi
           printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
 
+      # Pick the deployment in bash (an unset secret is '' and an `a && b || c` expression would
+      # silently fall back to the test ID) and check it before anything is pushed.
+      - name: Select deployment
+        env:
+          DEPLOYMENT_ID_TEST: ${{ secrets.DEPLOYMENT_ID }}
+          DEPLOYMENT_ID_PROD: ${{ secrets.DEPLOYMENT_ID_PROD }}
+        run: |
+          if [ "$IS_PROD" = "true" ]; then id="$DEPLOYMENT_ID_PROD"; name=DEPLOYMENT_ID_PROD; else id="$DEPLOYMENT_ID_TEST"; name=DEPLOYMENT_ID; fi
+          if [ -z "$id" ]; then echo "Secret $name is not set"; exit 1; fi
+          echo "::add-mask::$id"
+          echo "DEPLOYMENT_ID=$id" >> "$GITHUB_ENV"
+
       - name: Point .clasp.json at the prod script
         if: env.IS_PROD == 'true'
         env:
@@ -58,8 +70,4 @@ jobs:
         run: clasp push -f
 
       - name: Update deployment
-        env:
-          DEPLOYMENT_ID: ${{ env.IS_PROD == 'true' && secrets.DEPLOYMENT_ID_PROD || secrets.DEPLOYMENT_ID }}
-        run: |
-          if [ -z "$DEPLOYMENT_ID" ]; then echo "Deployment ID secret is not set"; exit 1; fi
-          clasp update-deployment "$DEPLOYMENT_ID" -d "${GITHUB_SHA::7}"
+        run: clasp update-deployment "$DEPLOYMENT_ID" -d "${GITHUB_SHA::7}"
