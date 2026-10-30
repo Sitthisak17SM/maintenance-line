@@ -1,0 +1,65 @@
+name: Deploy Apps Script
+
+# Push to main deploys to test only. Prod requires a manual run with target=prod.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+      - 'tests/**'
+      - '.clasp.json'
+      - '.github/workflows/deploy-gas.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target'
+        type: choice
+        options: [test, prod]
+        default: test
+
+concurrency:
+  group: deploy-gas-${{ inputs.target || 'test' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      IS_PROD: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'prod' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: node --test
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then echo "Secret CLASPRC_JSON is not set"; exit 1; fi
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+
+      - name: Point .clasp.json at the prod script
+        if: env.IS_PROD == 'true'
+        env:
+          SCRIPT_ID_PROD: ${{ secrets.SCRIPT_ID_PROD }}
+        run: |
+          if [ -z "$SCRIPT_ID_PROD" ]; then echo "Secret SCRIPT_ID_PROD is not set"; exit 1; fi
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('.clasp.json'));c.scriptId=process.env.SCRIPT_ID_PROD;fs.writeFileSync('.clasp.json',JSON.stringify(c,null,2))"
+
+      - name: Push code
+        run: clasp push -f
+
+      - name: Update deployment
+        env:
+          DEPLOYMENT_ID: ${{ env.IS_PROD == 'true' && secrets.DEPLOYMENT_ID_PROD || secrets.DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$DEPLOYMENT_ID" ]; then echo "Deployment ID secret is not set"; exit 1; fi
+          clasp update-deployment "$DEPLOYMENT_ID" -d "${GITHUB_SHA::7}"
