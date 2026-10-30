@@ -42,24 +42,30 @@ function Webhook_handleEvent_(event, isTest) {
   }
   Webhook_trace_(event.type + ' event from ' + (event.source && event.source.type));
 
-  if (event.source && event.source.type === 'user') {
-    if (event.type === 'follow') {
-      Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]));
-    } else if (event.type === 'message' && event.message.type === 'text') {
-      if (event.message.text.trim().toLowerCase() === 'ping') {
-        Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('pong')]));
-      }
+  try {
+    Webhook_respond_(event);
+  } finally {
+    // Log even when the reply fails, so the event is still visible in WebhookLog.
+    if (isTest) {
+      Repo_append('WebhookLog', {
+        at: new Date(),
+        event_type: event.type,
+        user_id: (event.source && event.source.userId) || '',
+        webhook_event_id: event.webhookEventId || '',
+        payload: JSON.stringify(event).slice(0, WEBHOOK_PAYLOAD_MAX_CHARS),
+      });
     }
   }
+}
 
-  if (isTest) {
-    Repo_append('WebhookLog', {
-      at: new Date(),
-      event_type: event.type,
-      user_id: (event.source && event.source.userId) || '',
-      webhook_event_id: event.webhookEventId || '',
-      payload: JSON.stringify(event).slice(0, WEBHOOK_PAYLOAD_MAX_CHARS),
-    });
+function Webhook_respond_(event) {
+  if (!event.source || event.source.type !== 'user') return;
+  if (event.type === 'follow') {
+    Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]));
+  } else if (event.type === 'message' && event.message.type === 'text') {
+    if (event.message.text.trim().toLowerCase() === 'ping') {
+      Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('pong')]));
+    }
   }
 }
 
