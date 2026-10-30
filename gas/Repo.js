@@ -59,41 +59,43 @@ function Repo_getConfig() {
 }
 
 /**
- * First row whose `header` cell equals `value` exactly (case-sensitive).
- * Returns {rowIndex, record} or null. Uses TextFinder so only the matching row is read.
+ * First row whose `header` cell equals `value` (case-sensitive, after trimming both sides).
+ * Returns {rowIndex, record} or null. Reads the one column, then only the matching row.
  */
 function Repo_findBy(name, header, value) {
-  const key = String(value === undefined || value === null ? '' : value).trim();
-  if (!key) return null;
-  const sheet = Repo_sheet(name);
-  const headers = Repo_headersOf_(name);
-  const col = headers.indexOf(header) + 1;
-  if (col === 0) throw new Error('Tab ' + name + ' has no column ' + header);
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-  const cell = sheet.getRange(2, col, lastRow - 1, 1).createTextFinder(key)
-    .matchCase(true).matchEntireCell(true).findNext();
-  if (!cell) return null;
-  const rowIndex = cell.getRow();
-  const row = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
-  return { rowIndex: rowIndex, record: Repo_toObject_(headers, row) };
+  const found = Repo_findRows_(name, header, value);
+  if (!found.rows.length) return null;
+  const rowIndex = found.rows[0];
+  const row = found.sheet.getRange(rowIndex, 1, 1, found.headers.length).getValues()[0];
+  return { rowIndex: rowIndex, record: Repo_toObject_(found.headers, row) };
 }
 
-/** Every row whose `header` cell equals `value` exactly, in sheet order. */
+/** Every row whose `header` cell equals `value` (trimmed), in sheet order. */
 function Repo_findAllBy(name, header, value) {
+  const found = Repo_findRows_(name, header, value);
+  return found.rows.map(function (rowIndex) {
+    return Repo_toObject_(found.headers, found.sheet.getRange(rowIndex, 1, 1, found.headers.length).getValues()[0]);
+  });
+}
+
+/**
+ * Sheet row numbers whose `header` cell, trimmed, equals the trimmed `value`. Trimming the
+ * cell matters: hand-typed ids can carry a stray tab or space (e.g. "Uxxx\t").
+ */
+function Repo_findRows_(name, header, value) {
   const key = String(value === undefined || value === null ? '' : value).trim();
-  if (!key) return [];
   const sheet = Repo_sheet(name);
   const headers = Repo_headersOf_(name);
+  const out = { sheet: sheet, headers: headers, rows: [] };
+  if (!key) return out;
   const col = headers.indexOf(header) + 1;
   if (col === 0) throw new Error('Tab ' + name + ' has no column ' + header);
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  return sheet.getRange(2, col, lastRow - 1, 1).createTextFinder(key)
-    .matchCase(true).matchEntireCell(true).findAll()
-    .map(function (cell) {
-      return Repo_toObject_(headers, sheet.getRange(cell.getRow(), 1, 1, headers.length).getValues()[0]);
-    });
+  if (lastRow < 2) return out;
+  sheet.getRange(2, col, lastRow - 1, 1).getValues().forEach(function (r, i) {
+    if (String(r[0]).trim() === key) out.rows.push(i + 2);
+  });
+  return out;
 }
 
 /** Writes `changes` (by header) into one row; other cells keep their values. Returns the merged record. */
@@ -109,7 +111,7 @@ function Repo_update(name, rowIndex, changes) {
       const h = headers[i];
       return h && Object.prototype.hasOwnProperty.call(changes, h) ? changes[h] : v;
     });
-    range.setValues([row]);
+    range.setValues(Repo_safeRows_(range, [row]));
     return Repo_toObject_(headers, row);
   });
 }
@@ -133,7 +135,23 @@ function Repo_appendRows(name, objs) {
     const start = sheet.getLastRow() + 1;
     const missing = start + rows.length - 1 - sheet.getMaxRows();
     if (missing > 0) sheet.insertRowsAfter(sheet.getMaxRows(), missing);
-    sheet.getRange(start, 1, rows.length, headers.length).setValues(rows);
+    const range = sheet.getRange(start, 1, rows.length, headers.length);
+    range.setValues(Repo_safeRows_(range, rows));
+  });
+}
+
+/**
+ * setValues parses strings like typed input, so user text such as "=IMPORTXML(...)" would
+ * become a live formula. Plain-text (@) columns (Setup SETUP_TEXT_COLUMNS) store text as is;
+ * in any other column a string starting with = + - @ gets a leading apostrophe, which Sheets
+ * keeps as text and getValues returns without the apostrophe.
+ */
+function Repo_safeRows_(range, rows) {
+  const formats = range.getNumberFormats();
+  return rows.map(function (row, r) {
+    return row.map(function (v, c) {
+      return typeof v === 'string' && /^[=+\-@]/.test(v) && formats[r][c] !== '@' ? "'" + v : v;
+    });
   });
 }
 

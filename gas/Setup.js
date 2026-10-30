@@ -28,12 +28,22 @@ const SETUP_TABS = {
   PM_Plan: ['pm_id', 'branch_code', 'asset', 'category_code', 'every_months', 'next_due', 'assignee_user_id', 'note'],
 };
 
-// Columns that must stay text (leading zeros, IDs, config values).
+// Columns that must stay text: IDs, phones (leading zeros), config values, and every free-text
+// column users type into, so "1/2" stays "1/2" instead of a date and "=..." is never a formula.
+// Re-running Setup_init applies new entries to an existing sheet.
 const SETUP_TEXT_COLUMNS = {
-  Jobs: ['job_id', 'reporter_phone', 'related_job_id'],
-  Users: ['line_user_id', 'phone'],
-  Vendors: ['vendor_id', 'contact'],
+  Jobs: [
+    'job_id', 'area', 'title', 'detail', 'reporter_id', 'reporter_name', 'reporter_phone', 'photos_before',
+    'candidate_ids', 'assignee_id', 'assignee_name', 'vendor', 'ext_reason', 'cause', 'fix', 'photos_after',
+    'onsite_note', 'ack_by', 'alert_flags', 'related_job_id',
+  ],
+  JobLog: ['log_id', 'job_id', 'actor_id', 'actor_name', 'reason', 'old_value', 'new_value'],
+  Parts: ['job_id', 'item', 'vendor', 'note'],
+  Users: ['line_user_id', 'display_name', 'real_name', 'phone', 'note'],
+  Areas: ['area_name'],
+  Vendors: ['vendor_id', 'name', 'contact', 'note'],
   Config: ['value'],
+  WebhookLog: ['user_id', 'webhook_event_id', 'payload'],
   Budget: ['month'],
 };
 
