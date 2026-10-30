@@ -7,18 +7,27 @@ function Line_text(text) {
   return { type: 'text', text: text };
 }
 
-/** Reply is free (no quota). A reply token is single-use and short-lived. Returns {ok, status, body}. */
+/**
+ * Reply is free (no quota). A reply token is single-use and short-lived.
+ * Never throws (network errors and a missing token included), like Line_push, so the
+ * webhook still runs the rest of an event; returns {ok, status, body}.
+ */
 function Line_reply(replyToken, messages) {
-  const res = UrlFetchApp.fetch(LINE_API_BASE + '/v2/bot/message/reply', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + Line_accessToken_() },
-    payload: JSON.stringify({ replyToken: replyToken, messages: messages }),
-    muteHttpExceptions: true,
-  });
-  const status = res.getResponseCode();
-  if (status !== 200) console.error('LINE reply failed: %s %s', status, res.getContentText());
-  return { ok: status === 200, status: status, body: status === 200 ? '' : res.getContentText() };
+  try {
+    const res = UrlFetchApp.fetch(LINE_API_BASE + '/v2/bot/message/reply', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + Line_accessToken_() },
+      payload: JSON.stringify({ replyToken: replyToken, messages: messages }),
+      muteHttpExceptions: true,
+    });
+    const status = res.getResponseCode();
+    if (status !== 200) console.error('LINE reply failed: %s %s', status, res.getContentText());
+    return { ok: status === 200, status: status, body: status === 200 ? '' : res.getContentText() };
+  } catch (err) {
+    console.error('LINE reply failed: %s', err);
+    return { ok: false, status: 0, body: String(err) };
+  }
 }
 
 /**
