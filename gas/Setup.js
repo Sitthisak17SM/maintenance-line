@@ -155,6 +155,43 @@ function Setup_driveFolder_(props) {
   return folder;
 }
 
+/**
+ * Run from the editor to diagnose the webhook: which Script Properties are set (never their
+ * values), whether the LINE token works, and the last webhook steps recorded by Webhook_trace_.
+ */
+function Setup_check() {
+  const props = PropertiesService.getScriptProperties();
+  ['LINE_CHANNEL_ACCESS_TOKEN', 'LINE_LOGIN_CHANNEL_ID', 'LIFF_ID', 'WEBHOOK_KEY', 'WEB_BASE_URL', 'SHEET_ID', 'DRIVE_FOLDER_ID']
+    .forEach(function (key) {
+      const value = props.getProperty(key);
+      console.log('%s: %s', key, value ? 'set (' + value.length + ' chars)' : 'MISSING');
+    });
+  const others = props.getKeys().filter(function (k) { return !/^JOB_SEQ_/.test(k) && !Object.prototype.hasOwnProperty.call(SETUP_KNOWN_PROPS, k); });
+  if (others.length) console.warn('Unexpected property names (typo?): %s', others.join(', '));
+
+  const token = props.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  if (token) {
+    const res = UrlFetchApp.fetch(LINE_API_BASE + '/v2/bot/info', {
+      headers: { Authorization: 'Bearer ' + token.trim() },
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() === 200) {
+      const info = JSON.parse(res.getContentText());
+      console.log('LINE token OK: bot %s (%s)', info.displayName, info.basicId);
+    } else {
+      console.error('LINE token rejected: HTTP %s %s', res.getResponseCode(), res.getContentText());
+    }
+  }
+
+  const trace = JSON.parse(CacheService.getScriptCache().get('diag_webhook') || '[]');
+  console.log('Last webhook steps:\n%s', trace.length ? trace.join('\n') : '(none recorded since the last deploy)');
+}
+
+const SETUP_KNOWN_PROPS = {
+  LINE_CHANNEL_ACCESS_TOKEN: 1, LINE_LOGIN_CHANNEL_ID: 1, LIFF_ID: 1, WEBHOOK_KEY: 1,
+  WEB_BASE_URL: 1, SHEET_ID: 1, DRIVE_FOLDER_ID: 1,
+};
+
 /** Phase 2 (PLAN §14). */
 function Setup_migrateLegacy(sourceSheetId) {
   throw new Error('Setup_migrateLegacy: not implemented (phase 2)');

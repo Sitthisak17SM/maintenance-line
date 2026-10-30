@@ -3,11 +3,14 @@
 const WEBHOOK_DEDUP_SECONDS = 6 * 3600;
 const WEBHOOK_PAYLOAD_MAX_CHARS = 49000; // sheet cell limit is 50,000
 const WEBHOOK_ENV_CACHE_SECONDS = 600; // a Config ENV change takes up to 10 min to apply
+const WEBHOOK_TRACE_LINES = 20;
 
 function Webhook_handle(e) {
-  const expected = PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY');
-  if (!expected || e.parameter.key !== expected) {
-    console.warn(expected ? 'Webhook: key mismatch' : 'Webhook: WEBHOOK_KEY is not set');
+  const expected = (PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY') || '').trim();
+  if (!expected || String(e.parameter.key).trim() !== expected) {
+    Webhook_trace_(expected
+      ? 'key mismatch (got ' + String(e.parameter.key).length + ' chars, expected ' + expected.length + ')'
+      : 'WEBHOOK_KEY is not set');
     return Webhook_ok_();
   }
 
@@ -15,7 +18,7 @@ function Webhook_handle(e) {
   try {
     events = JSON.parse(e.postData.contents).events || [];
   } catch (err) {
-    console.error('Webhook: invalid body');
+    Webhook_trace_('invalid body');
     return Webhook_ok_();
   }
   // The console's Verify button sends no events; answer before touching the sheet.
@@ -26,7 +29,7 @@ function Webhook_handle(e) {
     try {
       Webhook_handleEvent_(event, isTest);
     } catch (err) {
-      console.error('Webhook event %s failed: %s', event.webhookEventId, err.stack || err);
+      Webhook_trace_('event ' + event.webhookEventId + ' failed: ' + (err.stack || err));
     }
   });
   return Webhook_ok_();
@@ -34,17 +37,17 @@ function Webhook_handle(e) {
 
 function Webhook_handleEvent_(event, isTest) {
   if (Webhook_isDuplicate_(event.webhookEventId)) {
-    console.log('Webhook: duplicate event %s skipped', event.webhookEventId);
+    Webhook_trace_('duplicate event ' + event.webhookEventId + ' skipped');
     return;
   }
-  console.log('Webhook: %s event from %s', event.type, event.source && event.source.type);
+  Webhook_trace_(event.type + ' event from ' + (event.source && event.source.type));
 
   if (event.source && event.source.type === 'user') {
     if (event.type === 'follow') {
-      Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]);
+      Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]));
     } else if (event.type === 'message' && event.message.type === 'text') {
       if (event.message.text.trim().toLowerCase() === 'ping') {
-        Line_reply(event.replyToken, [Line_text('pong')]);
+        Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('pong')]));
       }
     }
   }
@@ -68,7 +71,7 @@ function Webhook_env_() {
     try {
       env = String(Repo_getConfig().ENV || '');
     } catch (err) {
-      console.error('Webhook: cannot read Config: %s', err);
+      Webhook_trace_('cannot read Config: ' + err);
       return '';
     }
     cache.put('cfg_env', env, WEBHOOK_ENV_CACHE_SECONDS);
@@ -84,6 +87,22 @@ function Webhook_isDuplicate_(eventId) {
   if (cache.get(key)) return true;
   cache.put(key, '1', WEBHOOK_DEDUP_SECONDS);
   return false;
+}
+
+function Webhook_traceReply_(res) {
+  Webhook_trace_(res.ok ? 'reply sent' : 'reply failed: HTTP ' + res.status + ' ' + res.body);
+}
+
+/**
+ * Logs a webhook step. Web App runs triggered by LINE do not show console output in the
+ * editor, so the last lines are also kept in the script cache for Setup_check().
+ */
+function Webhook_trace_(message) {
+  console.log('Webhook: ' + message);
+  const cache = CacheService.getScriptCache();
+  const lines = JSON.parse(cache.get('diag_webhook') || '[]');
+  lines.push(Utilities.formatDate(new Date(), 'Asia/Bangkok', 'HH:mm:ss') + ' ' + String(message).slice(0, 500));
+  cache.put('diag_webhook', JSON.stringify(lines.slice(-WEBHOOK_TRACE_LINES)), WEBHOOK_DEDUP_SECONDS);
 }
 
 function Webhook_ok_() {

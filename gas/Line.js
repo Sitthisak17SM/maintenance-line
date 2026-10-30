@@ -7,7 +7,7 @@ function Line_text(text) {
   return { type: 'text', text: text };
 }
 
-/** Reply is free (no quota). A reply token is single-use and short-lived. */
+/** Reply is free (no quota). A reply token is single-use and short-lived. Returns {ok, status, body}. */
 function Line_reply(replyToken, messages) {
   const res = UrlFetchApp.fetch(LINE_API_BASE + '/v2/bot/message/reply', {
     method: 'post',
@@ -16,10 +16,9 @@ function Line_reply(replyToken, messages) {
     payload: JSON.stringify({ replyToken: replyToken, messages: messages }),
     muteHttpExceptions: true,
   });
-  if (res.getResponseCode() !== 200) {
-    console.error('LINE reply failed: %s %s', res.getResponseCode(), res.getContentText());
-  }
-  return res.getResponseCode() === 200;
+  const status = res.getResponseCode();
+  if (status !== 200) console.error('LINE reply failed: %s %s', status, res.getContentText());
+  return { ok: status === 200, status: status, body: status === 200 ? '' : res.getContentText() };
 }
 
 /** Phase 1: push notifications (counts toward quota, see PLAN §8). */
@@ -60,7 +59,7 @@ function Line_verifyIdToken(idToken) {
 function Line_accessToken_() {
   const token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
   if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set');
-  return token;
+  return token.trim();
 }
 
 function Line_sha256Hex_(text) {
