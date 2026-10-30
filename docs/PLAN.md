@@ -27,6 +27,10 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | VIEWER | ผู้บริหาร | ดู Dashboard และรายการงานทั้งหมดแบบอ่านอย่างเดียว |
 
 - **ผู้ลงทะเบียนใหม่:** ได้ role `STAFF` ก่อน แล้ว Admin แก้ role ในแท็บ Users เอง (เฟส 1 ยังไม่มีหน้าจอสำหรับแก้ role)
+- **VIEWER แจ้งซ่อมไม่ได้:** อ่านอย่างเดียวตามตารางนี้ (AOF ยืนยัน 30 ต.ค. 2026)
+- **`Users.active = FALSE`:** ใช้ API ไม่ได้ (ได้ `FORBIDDEN`) routing ข้าม และไม่ได้รับ push
+    - ตั้งเป็น FALSE เมื่อ unfollow หรือ Admin แก้เอง
+    - กลับเป็น TRUE อัตโนมัติเมื่อ follow OA อีกครั้ง (AOF ยืนยัน 30 ต.ค. 2026)
 - **งานช่างนอก:** ADMIN เป็นผู้รับงานแทน (`assignee_id` เป็นของ ADMIN) และบันทึกชื่อผู้รับเหมาในคอลัมน์ `vendor`
 
 ## 3. สถานะงาน
@@ -43,15 +47,19 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 ทุก action ต้องผ่าน `Status_transition(job, action, actor, input)` ใน `gas/core/Status.js` ฟังก์ชันนี้ต้องตรวจสถานะต้นทางและสิทธิ์ แล้วคืนค่าฟิลด์ที่ต้องเปลี่ยน ทุก action เขียน JobLog 1 แถว
 
+- **ลำดับการตรวจ:** ตรวจสิทธิ์ก่อน (`FORBIDDEN`) แล้วจึงตรวจสถานะ (`INVALID_STATE` ยกเว้น accept ที่ได้ `CONFLICT`)
+- **ตารางสิทธิ์อยู่ที่เดียว:** `STATUS_RULES` ใน `core/Status.js` รวมถึง `Status_canView`, `Status_allowedActions` (ปุ่มในหน้า job) และ scope ของ listJobs
+- **"candidate หรือ assignee" ของ reject/forward:** ตอน ASSIGNED คือ candidate ทุกคน พอ ACCEPTED แล้วเหลือแค่ assignee
+
 | action | จากสถานะ | ไปสถานะ | ใครทำได้ | สิ่งที่ระบบทำ | เฟส |
 |---|---|---|---|---|---|
-| create | — | ASSIGNED (หรือ NEW ถ้าหาผู้รับไม่ได้) | ผู้ที่ลงทะเบียนแล้ว | สร้าง job_id, created_at, response_due_at, due_at, คำนวณ routing, assigned_at แล้ว push การ์ด job_new | 1 |
+| create | — | ASSIGNED (หรือ NEW ถ้าหาผู้รับไม่ได้) | ผู้ที่ลงทะเบียนแล้ว ยกเว้น VIEWER | สร้าง job_id, created_at, response_due_at, due_at, คำนวณ routing, assigned_at แล้ว push การ์ด job_new | 1 |
 | accept | ASSIGNED | ACCEPTED | คนใน candidate_ids หรือ ADMIN | accepted_at, assignee_*; คนแรกที่กดได้งาน คนอื่นได้ CONFLICT | 1 |
 | reject | ASSIGNED, ACCEPTED | REJECTED | candidate หรือ assignee | เหตุผล (บังคับ), reject_count + 1, ล้าง assignee, push job_rejected ให้ ADMIN | 1 |
-| forward | ASSIGNED, ACCEPTED | ASSIGNED | TECH ที่เป็น candidate หรือ assignee | เหตุผล (บังคับ), route_to = ADMIN, candidate_ids = ADMIN ทุกคน, ล้าง assignee, push job_new ให้ ADMIN พร้อมเหตุผล | 1 |
-| reassign | NEW, REJECTED, ASSIGNED, ACCEPTED | ASSIGNED | ADMIN | candidate_ids = คนที่เลือก (หรือ ADMIN เอง + vendor), assigned_at ใหม่, push job_new | 1 |
+| forward | ASSIGNED, ACCEPTED | ASSIGNED (NEW ถ้าไม่มี ADMIN ที่ active) | TECH ที่เป็น candidate หรือ assignee | เหตุผล (บังคับ), route_to = ADMIN, candidate_ids = ADMIN ทุกคน, ล้าง assignee, push job_new ให้ ADMIN พร้อมเหตุผล | 1 |
+| reassign | NEW, REJECTED, ASSIGNED, ACCEPTED | ASSIGNED | ADMIN | candidate_ids = คนที่เลือก (TECH หรือ ADMIN ที่ active) หรือ ADMIN เอง + vendor (ชื่อจากแท็บ Vendors), ล้าง assignee, assigned_at ใหม่, push job_new (ไม่ส่งให้ ADMIN ที่กดจ่ายงานเอง) | 1 |
 | checkin | ACCEPTED | IN_PROGRESS | assignee หรือ ADMIN | checkin_at | 1 |
-| close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause, fix, แถว Parts, cost_total, photos_after, onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
+| close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause และ fix (บังคับ), แถว Parts (amount = qty × unit_price), cost_total, photos_after (อย่างน้อย 1 รูป server ตรวจด้วย), onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
 | ack | DONE | CLOSED | ผู้แจ้ง, MANAGER ของสาขานั้น, ADMIN | closed_at, ack_by, ack_at | 1 |
 | request_ext | ACCEPTED, IN_PROGRESS | (ไม่เปลี่ยน) | assignee | ext_pending = TRUE, ext_requested_due_at, ext_reason แล้ว push ext_request ให้ ADMIN | 2 |
 | decide_ext | งานที่ ext_pending = TRUE | (ไม่เปลี่ยน) | ADMIN | ext_pending = FALSE ถ้าอนุมัติ: due_at = ext_requested_due_at, ext_count + 1, ล้าง flag D75/DB แล้ว push ext_result | 2 |
@@ -179,6 +187,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | PHOTO_MAX_COUNT | 4 | ต่อการส่ง 1 ครั้ง |
 | PHOTO_MAX_EDGE_PX | 1280 | ย่อด้านยาวก่อนอัปโหลด |
 | VIDEO_MAX_MB | 0 | 0 = ยังไม่รับวิดีโอ (เปิดในเฟส 2 หลังทดสอบ) |
+| FLEX_SHOW_PHOTO | TRUE | แสดงรูปแรกบนการ์ด job_new ถ้าไม่มีแถวนี้ถือว่า TRUE (ตั้ง FALSE ถ้ารูปไม่แสดง ดู §18) |
 
 ## 5. Script Properties
 
@@ -242,7 +251,16 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | cancelJob | job_id, reason | ADMIN | 2 |
 | dashboard | from, to, branch_code? | ADMIN, VIEWER | 2 |
 
-**ค่าที่ action `me` คืน:** `{user|null, branches, areas, categories, sla, config}` โดย config คืนเฉพาะค่าที่หน้าเว็บต้องใช้
+**ค่าที่ action `me` คืน:** `{user|null, branches, areas, categories, sla, config}` โดย config คืนเฉพาะค่าที่หน้าเว็บต้องใช้ (`PHOTO_MAX_COUNT`, `PHOTO_MAX_EDGE_PX`, `VIDEO_MAX_MB`) และ `user.active` บอกว่าบัญชีถูกปิดหรือไม่
+
+**ค่าที่ action อื่นคืน**
+
+- `me` กับ `register` ใช้แค่ ID token ส่วน action อื่นต้องเป็นผู้ใช้ที่ลงทะเบียนแล้วและ active
+- `register`: `{user}` ผู้ใช้เดิมแก้ได้แค่ชื่อจริง เบอร์ และร้าน (role ไม่เปลี่ยน)
+- `getJob`: `{job, status_label, photos_before_urls, photos_after_urls, parts, log, allowed_actions}` ถ้าเป็น ADMIN มี `reassign_options: {users, vendors}` (TECH/ADMIN ที่ active และ Vendors ที่ active) สำหรับหน้า admin
+- `listJobs`: `{total, jobs}` เรียงงานใหม่ก่อน ไม่เกิน 200 งาน กรองด้วย `branch_code` ได้ (MANAGER ใช้ scope branch ได้เฉพาะสาขาตัวเอง)
+- action ที่เปลี่ยนสถานะ: `{job_id, status, job}`
+- ถ้ารอ lock เกิน 10 วินาทีจะได้ `CONFLICT` ให้ลองใหม่
 
 **รูปแบบรูปใน `photos`:** `[{"mime": "image/jpeg", "b64": "..."}]` ไม่เกิน `PHOTO_MAX_COUNT` รูป ฝั่ง server ปฏิเสธรูปที่ใหญ่เกิน 2 MB หลัง decode
 
@@ -260,16 +278,18 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 **การจัดการแต่ละ event**
 
-- **`follow`:** reply การ์ด welcome พร้อมปุ่มลงทะเบียน
+- **`follow`:** reply การ์ด welcome พร้อมปุ่มลงทะเบียน และตั้ง `Users.active = TRUE` ถ้าเคยลงทะเบียนแล้ว
 - **`unfollow`:** ตั้ง `Users.active = FALSE`
+- **ผู้ใช้ที่ยังไม่ลงทะเบียนหรือถูกปิด:** "งานของฉัน" และ postback ตอบการ์ดให้ลงทะเบียนหรือข้อความแจ้ง
+- **error ที่ไม่คาดคิด:** ยัง reply ข้อความสั้นๆ ว่าระบบขัดข้อง และเก็บรายละเอียดใน `diag_webhook`
 - **`message` แบบข้อความ:**
-  - ตรงรูปแบบ `^MT-\d{4}-\d{4}$` และผู้ส่งเป็นผู้แจ้งของงานนั้น: reply การ์ด job_received ข้อความนี้มาจาก `liff.sendMessages` ในหน้า report จึงตอบด้วย reply ได้โดยไม่เสียโควตา
-  - "งานของฉัน": reply งานที่ยังเปิดไม่เกิน 5 งาน
+  - ตรงรูปแบบ `^MT-\d{4}-\d{4}$` และผู้ส่งเป็นผู้แจ้งของงานนั้น: reply การ์ด job_received ข้อความนี้มาจาก `liff.sendMessages` ในหน้า report จึงตอบด้วย reply ได้โดยไม่เสียโควตา (ถ้าไม่ใช่ผู้แจ้งตอบข้อความช่วยเหลือ)
+  - "งานของฉัน": reply งานที่ยังเปิดไม่เกิน 5 งาน ที่ผู้ส่งเป็นผู้แจ้ง candidate หรือ assignee พร้อมปุ่มไปหน้า jobs
   - "ping": reply "pong" (ใช้เช็คระบบ)
   - ข้อความอื่น: reply ข้อความช่วยเหลือสั้นๆ
 - **`postback`:**
   - data เป็น querystring เช่น `a=accept&j=MT-2611-0001`
-  - ค่า `a` ที่รองรับ: `accept`, `ack`, `ext_ok`, `ext_no`
+  - ค่า `a` ที่รองรับ: `accept`, `ack`, `ext_ok`, `ext_no` (เฟส 1 ตอบว่ายังไม่เปิดใช้งาน)
   - เรียก use-case เดียวกับ API โดยถือ `source.userId` เป็นผู้กด แล้ว reply ผลกลับ
 
 **การตอบกลับ:** ลองตอบด้วย `HtmlService.createHtmlOutput('OK')` ในเฟส 0 แล้วบันทึกผลไว้ใน §18
@@ -305,7 +325,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - หมวด
 - หัวข้อ
 - รายละเอียด (ตัดที่ 120 ตัวอักษร)
-- ผู้แจ้งและเวลา
+- ผู้แจ้ง (พร้อมเบอร์โทรตาม R1) และเวลา
 - "ต้องเข้าหน้างานภายใน" ตามด้วยค่า response_due_at
 
 **สีป้ายความเร่งด่วน:** EMERGENCY `#D32F2F` · URGENT `#F57C00` · NORMAL `#1976D2` · PREVENTIVE `#757575`
@@ -315,6 +335,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - LINE นับต่อผู้รับต่อคำขอ ส่งหลาย bubble ให้คนเดียวในคำขอเดียวนับเป็น 1
 - reply ไม่นับโควตา
 - คาดว่าใช้ push 2–3 ข้อความต่องาน
+- ไม่ push ให้ผู้กดเอง: reassign ไม่ส่ง job_new ให้ ADMIN ที่จ่ายงาน และ reject ไม่ส่ง job_rejected ให้ ADMIN ที่ปฏิเสธเอง
+- `NOTIFY_REPORTER_ON_ACCEPT` ยังไม่ใช้ในเฟส 1 (Q8)
 
 ## 9. หน้า LIFF (`web/`)
 
@@ -385,6 +407,8 @@ if candidates is empty                 -> candidates = active ADMINs
 job.route_to = category.route_to; job.candidate_ids = candidates
 ```
 
+- ถ้า `assignee_user_id` ไม่มีในแท็บ Users หรือ inactive ให้ใช้กฎตาม route_to แทน งานจะได้ไม่หาย
+- `route_to` ไม่สนตัวพิมพ์ ค่าอื่นที่ไม่ใช่ TECH ถือเป็น ADMIN และ `active` ที่เป็นช่องว่างถือว่า FALSE
 - ส่งการ์ดให้ candidate ทุกคน คนแรกที่กดรับได้งาน
 - ตอนรับงานต้องตรวจซ้ำภายใต้ lock ว่าสถานะยังเป็น ASSIGNED อยู่
 - `forward` คือช่างอาคารส่งงานต่อให้ ADMIN เพื่อหาช่างนอก ไม่นับเป็นการปฏิเสธ
@@ -425,7 +449,8 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 - **ชื่อไฟล์:** `{job_id}_{before|after}_{n}.jpg`
 - **การแชร์:** ตั้งเป็น "ทุกคนที่มีลิงก์ดูได้" เพื่อให้หน้า LIFF และการ์ดแสดงรูปได้ รูปเป็นภาพจุดชำรุดในร้าน ความเสี่ยงจึงต่ำ
 - **URL สำหรับแสดงในหน้า LIFF:** `https://drive.google.com/thumbnail?id={fileId}&sz=w1000`
-- **รูปบนการ์ด Flex:** ต้องทดสอบในเฟส 1 ว่า LINE แสดงได้หรือไม่ (§18)
+- **รูปบนการ์ด Flex:** ใช้ `https://lh3.googleusercontent.com/d/{fileId}=w1000` (ไม่ redirect) ต้องทดสอบว่า LINE แสดงได้หรือไม่ (§18) ถ้าไม่ได้ให้ตั้ง Config `FLEX_SHOW_PHOTO = FALSE`
+- **ลำดับการบันทึก:** ตรวจข้อมูลและสิทธิ์ให้ผ่านก่อน แล้วจึงบันทึกรูป เพื่อไม่ให้มีไฟล์ค้างใน Drive เมื่อคำขอถูกปฏิเสธ
 - **ขนาด:** server ตรวจจำนวนรูปและขนาดทุกครั้ง ส่วนวิดีโอยังปิดไว้ (VIDEO_MAX_MB = 0)
 
 ## 13. Dashboard และ KPI (เฟส 2)
@@ -505,6 +530,7 @@ maintenance-line/
 │   ├── Drive.js         base64 → file, sharing
 │   ├── Triggers.js      Sla_tick, Triggers_install
 │   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
+│   ├── Dev.js           Dev_smokeTest, Dev_testFlexImage (ทำงานเฉพาะ ENV=test)
 │   └── core/            pure logic, Node-testable
 │       ├── Status.js  Sla.js  Routing.js  JobId.js  Kpi.js
 ├── web/
@@ -558,8 +584,8 @@ maintenance-line/
 | ความเสี่ยง | พิสูจน์ในเฟส | ผลทดสอบ | ทางสำรอง |
 |---|---|---|---|
 | Apps Script ตอบ webhook ด้วย 302 ไม่ใช่ 200 | 0 | 30 ต.ค. 2026: `HtmlService.createHtmlOutput` ตอบ 200 ตรง (ไม่ redirect) แต่ใช้เวลา ~1.1 วินาที Verify รอบแรก timeout เพราะเปิดชีตอ่าน Config หลังให้คำขอที่ไม่มี event ตอบทันทีและ cache ENV แล้ว Verify = Success | ถ้า event มาถึงและ doPost ทำงานถือว่าใช้ได้ แม้ปุ่ม Verify จะ error ให้ปิด webhook redelivery และกันซ้ำด้วย webhookEventId |
-| รูปจาก Drive ไม่แสดงในการ์ด Flex | 1 | (กรอกหลังทดสอบ) | ตัดรูปออกจากการ์ด แล้วให้ดูรูปในหน้า LIFF แทน |
+| รูปจาก Drive ไม่แสดงในการ์ด Flex | 1 | (กรอกหลังทดสอบ) วิธีทดสอบ: รัน `Dev_smokeTestElec` แล้ว `Dev_testFlexImage` ซึ่ง push การ์ด 2 ใบให้ ADMIN (A = lh3, B = thumbnail) | ตั้ง Config `FLEX_SHOW_PHOTO = FALSE` เพื่อตัดรูปออกจากการ์ด แล้วให้ดูรูปในหน้า LIFF แทน |
 | ผู้ใช้ไม่ได้เพิ่มเพื่อน OA ทำให้ push ไม่ถึง | 1 | | ตั้ง LIFF Add friend option เป็น On (aggressive) |
 | อัปโหลดรูปช้าหรือเกินเวลา | 1 | | ย่อรูปที่มือถือก่อน และจำกัดจำนวนกับขนาด |
 | ข้อความเกินโควตาฟรี 300 ต่อเดือน | 2 | | ใช้ reply แทน push, รวมการเตือนเป็นข้อความเดียว หรืออัปเกรดเป็น Basic |
-| มีคนกดรับงานพร้อมกัน | 1 | | ใช้ LockService และตรวจสถานะซ้ำก่อนเขียน |
+| มีคนกดรับงานพร้อมกัน | 1 | (กรอกหลังทดสอบ) ทำแล้ว: `Jobs_transition_` อ่านงานใหม่ภายใต้ script lock แล้วจึงเรียก `Status_transition` คนถัดไปได้ CONFLICT | ใช้ LockService และตรวจสถานะซ้ำก่อนเขียน |
