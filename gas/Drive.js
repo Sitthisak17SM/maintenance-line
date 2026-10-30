@@ -1,7 +1,8 @@
 // Photo storage (PLAN §12): base64 -> Drive file in DRIVE_FOLDER_ID/YYYY-MM/.
 
 const DRIVE_MAX_PHOTO_BYTES = 2 * 1024 * 1024;
-const DRIVE_PHOTO_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+// JPEG only: the LIFF pages always re-encode to JPEG (PLAN §9) and files are named .jpg (§12).
+const DRIVE_PHOTO_EXT = { 'image/jpeg': 'jpg' };
 
 /**
  * Checks the request's photos ([{mime, b64}]) before anything is stored and returns
@@ -14,7 +15,7 @@ function Drive_decodePhotos(photos, maxCount) {
   return photos.map(function (p, i) {
     const n = i + 1;
     const mime = String((p && p.mime) || '').toLowerCase();
-    if (!DRIVE_PHOTO_EXT[mime]) throw Status_error('VALIDATION', 'รูปที่ ' + n + ': รองรับเฉพาะ JPEG หรือ PNG');
+    if (!DRIVE_PHOTO_EXT[mime]) throw Status_error('VALIDATION', 'รูปที่ ' + n + ': รองรับเฉพาะไฟล์ JPEG');
     let bytes;
     try {
       bytes = Utilities.base64Decode(String(p.b64 || '').replace(/^data:[^,]*,/, ''));
@@ -34,16 +35,34 @@ function Drive_decodePhotos(photos, maxCount) {
 function Drive_savePhotos(jobId, kind, decoded, when) {
   if (!decoded || !decoded.length) return [];
   const folder = Drive_monthFolder_(when);
-  return decoded.map(function (photo, i) {
-    const name = jobId + '_' + kind + '_' + (i + 1) + '.' + DRIVE_PHOTO_EXT[photo.mime];
-    const file = folder.createFile(Utilities.newBlob(photo.bytes, photo.mime, name));
+  const ids = [];
+  try {
+    decoded.forEach(function (photo, i) {
+      const name = jobId + '_' + kind + '_' + (i + 1) + '.' + DRIVE_PHOTO_EXT[photo.mime];
+      const file = folder.createFile(Utilities.newBlob(photo.bytes, photo.mime, name));
+      ids.push(file.getId());
+      try {
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (err) {
+        // Some Workspace domains forbid link sharing; the file is still saved.
+        console.warn('Cannot share %s: %s', name, err);
+      }
+    });
+  } catch (err) {
+    Drive_trashFiles(ids); // a Drive error on photo n must not leave photos 1..n-1 behind
+    throw err;
+  }
+  return ids;
+}
+
+/** Moves files saved for a request that then failed to the trash. Never throws. */
+function Drive_trashFiles(fileIds) {
+  (fileIds || []).forEach(function (id) {
     try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      DriveApp.getFileById(id).setTrashed(true);
     } catch (err) {
-      // Some Workspace domains forbid link sharing; the file is still saved.
-      console.warn('Cannot share %s: %s', name, err);
+      console.warn('Cannot trash orphan photo %s: %s', id, err);
     }
-    return file.getId();
   });
 }
 

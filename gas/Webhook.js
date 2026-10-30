@@ -79,7 +79,7 @@ function Webhook_textReply_(userId, text) {
   if (WEBHOOK_JOB_ID_RE.test(text)) {
     // Sent by liff.sendMessages after report.html submits; only the reporter gets the card.
     const found = Repo_findJob(text);
-    if (found && String(found.job.reporter_id) === userId) return Flex_jobReceived(found.job, Jobs_ref_(found.job));
+    if (found && String(found.job.reporter_id).trim() === userId) return Flex_jobReceived(found.job, Jobs_ref_(found.job));
     return Flex_help();
   }
   if (text === 'งานของฉัน') {

@@ -25,22 +25,25 @@
       const realName = el('input', { type: 'text', maxlength: 100, autocomplete: 'name', value: user.real_name || '' });
       const phone = el('input', { type: 'tel', maxlength: 20, autocomplete: 'tel', inputmode: 'tel', value: user.phone || '' });
       const branch = el('select', {},
-        option('', '— เลือกร้าน —'),
+        option('', me.user && me.user.role !== 'STAFF' ? '— ไม่มีร้านสังกัด —' : '— เลือกร้าน —'),
         me.branches.map(function (b) { return option(b.branch_code, b.name, b.branch_code === user.branch_code); }));
+      // The server only lets STAFF move branch (it bounds a MANAGER's rights); others ask the Admin.
+      const branchLocked = !!me.user && me.user.role !== 'STAFF';
+      branch.disabled = branchLocked;
       const msg = el('p', { class: 'msg', hidden: true });
       const submit = el('button', { type: 'submit', class: 'btn' }, me.user ? 'บันทึก' : 'ลงทะเบียน');
 
       const form = el('form', { novalidate: true },
         field('ชื่อจริง', realName),
         field('เบอร์โทร', phone, 'ช่างจะโทรถามอาการตามเบอร์นี้'),
-        field('ร้าน', branch),
+        field('ร้าน', branch, branchLocked ? 'เปลี่ยนร้านได้โดย Admin เท่านั้น' : null),
         msg, submit);
 
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
         if (!realName.value.trim()) return invalid(msg, 'กรุณากรอกชื่อจริง', realName);
         if (!/^[0-9+\-\s]{6,20}$/.test(phone.value.trim())) return invalid(msg, 'กรุณากรอกเบอร์โทรให้ถูกต้อง', phone);
-        if (!branch.value) return invalid(msg, 'กรุณาเลือกร้าน', branch);
+        if (!branchLocked && !branch.value) return invalid(msg, 'กรุณาเลือกร้าน', branch);
         const result = await busy(submit, msg, 'กำลังบันทึก…', function () {
           return api('register', { real_name: realName.value, phone: phone.value, branch_code: branch.value });
         });

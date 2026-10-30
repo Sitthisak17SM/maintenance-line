@@ -5,6 +5,7 @@ const JOBS_TITLE_MAX = 80;
 const JOBS_TEXT_MAX = 2000;
 const JOBS_LIST_MAX = 200;
 const JOBS_MY_OPEN_MAX = 5;
+const JOBS_PHONE_RE = /^[0-9+\-\s]{6,20}$/;
 
 let Jobs_config_cache_ = null;
 let Jobs_tab_cache_ = {};
@@ -51,22 +52,22 @@ function Jobs_me(who) {
   };
 }
 
-/** action=register: new users get role STAFF (PLAN §2); existing users update name, phone and branch. */
+/**
+ * action=register: new users get role STAFF (PLAN §2); existing users update name and phone.
+ * Only STAFF may change their own branch: branch_code bounds what a MANAGER may see and ack,
+ * so for every other role it stays as the Admin set it in the Users tab (often blank for TECH/ADMIN).
+ */
 function Jobs_register(who, data) {
   data = data || {};
   const realName = Jobs_requireText_(data.real_name, 'ชื่อจริง', 100);
   const phone = Jobs_requireText_(data.phone, 'เบอร์โทร', 20);
-  if (!/^[0-9+\-\s]{6,20}$/.test(phone)) throw Status_error('VALIDATION', 'เบอร์โทรไม่ถูกต้อง');
-  const branch = Jobs_requireActive_('Branches', 'branch_code', data.branch_code, 'ร้าน');
+  if (!JOBS_PHONE_RE.test(phone)) throw Status_error('VALIDATION', 'เบอร์โทรไม่ถูกต้อง');
 
   const user = Repo_withLock(function () {
     const found = Repo_findUser(who.userId);
-    const fields = {
-      display_name: who.displayName || '',
-      real_name: realName,
-      phone: phone,
-      branch_code: branch.branch_code,
-    };
+    const fields = { display_name: who.displayName || '', real_name: realName, phone: phone };
+    const role = found ? String(found.user.role || '').trim().toUpperCase() : 'STAFF';
+    if (role === 'STAFF') fields.branch_code = Jobs_requireActive_('Branches', 'branch_code', data.branch_code, 'ร้าน').branch_code;
     if (found) {
       if (!Routing_isTrue(found.user.active)) {
         throw Status_error('FORBIDDEN', 'บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
@@ -103,6 +104,8 @@ function Jobs_create(actor, data) {
   const priority = String(data.priority || '').trim().toUpperCase();
   const slaRows = Jobs_tab_('SLA');
   if (!slaRows.some(function (r) { return r.priority === priority; })) throw Status_error('VALIDATION', 'กรุณาเลือกความเร่งด่วน');
+  const phone = Jobs_optionalText_(data.phone, Infinity);
+  if (phone && !JOBS_PHONE_RE.test(phone)) throw Status_error('VALIDATION', 'เบอร์โทรไม่ถูกต้อง');
   const photos = Drive_decodePhotos(data.photos, Number(config.PHOTO_MAX_COUNT) || 4);
 
   const route = Routing_route(category, Jobs_tab_('Users'));
@@ -122,7 +125,7 @@ function Jobs_create(actor, data) {
     priority: priority,
     reporter_id: actor.userId,
     reporter_name: actor.name,
-    reporter_phone: Jobs_optionalText_(data.phone, 20) || actor.phone,
+    reporter_phone: phone || actor.phone,
     photos_before: photoIds.join(','),
     route_to: route.route_to,
     vendor: '',
@@ -134,10 +137,17 @@ function Jobs_create(actor, data) {
     source: 'LINE',
   }, t.fields);
 
-  Repo_withLock(function () {
-    Repo_append('Jobs', job);
-    Repo_appendJobLog(jobId, actor, t.log, now);
-  });
+  let saved = false;
+  try {
+    Repo_withLock(function () {
+      Repo_append('Jobs', job);
+      saved = true; // from here the row references the photos, so they must stay
+      Repo_appendJobLog(jobId, actor, t.log, now);
+    });
+  } catch (err) {
+    if (!saved) Drive_trashFiles(photoIds); // the job was not saved, so its photos would be orphans
+    throw err;
+  }
   Jobs_notifyNew_(job, route.candidate_ids, '');
   return { job_id: jobId, status: job.status, job: Jobs_publicJob_(job) };
 }
@@ -205,8 +215,10 @@ function Jobs_accept(actor, jobId) {
 
 function Jobs_reject(actor, jobId, reason) {
   const r = Jobs_transition_(actor, jobId, 'reject', { reason: reason });
-  const admins = Routing_idsWithRole(Jobs_tab_('Users'), 'ADMIN').filter(function (id) { return id !== actor.userId; });
-  Line_push(admins, [Flex_jobRejected(r.job, Jobs_ref_(r.job), r.log.reason, actor.name)]);
+  Jobs_notify_('job_rejected', r.job, function () {
+    const admins = Routing_idsWithRole(Jobs_tab_('Users'), 'ADMIN').filter(function (id) { return id !== actor.userId; });
+    Line_push(admins, [Flex_jobRejected(r.job, Jobs_ref_(r.job), r.log.reason, actor.name)]);
+  });
   return Jobs_result_(r.job);
 }
 
@@ -224,7 +236,7 @@ function Jobs_reassign(actor, jobId, data) {
   const assigneeId = String(data.assignee_id || '').trim();
   const vendor = String(data.vendor || '').trim();
   if (assigneeId) {
-    const target = Jobs_tab_('Users').filter(Routing_isActiveUser).find(function (u) { return String(u.line_user_id) === assigneeId; });
+    const target = Jobs_tab_('Users').filter(Routing_isActiveUser).find(function (u) { return Routing_userId_(u) === assigneeId; });
     if (!target) throw Status_error('VALIDATION', 'ไม่พบผู้ใช้ที่เลือก หรือผู้ใช้ถูกปิดใช้งาน');
     input.target = { userId: assigneeId, role: String(target.role || '').trim().toUpperCase() };
   }
@@ -260,7 +272,16 @@ function Jobs_close(actor, jobId, data) {
   }, input));
 
   input.photos_after = Drive_savePhotos(current.job.job_id, 'after', photos, new Date());
-  const r = Jobs_transition_(actor, jobId, 'close', input);
+  const progress = { jobWritten: false };
+  let r;
+  try {
+    r = Jobs_transition_(actor, jobId, 'close', input, progress);
+  } catch (err) {
+    // The locked re-check can still fail (job changed meanwhile, lock timeout); drop the files,
+    // unless the Jobs row was already updated to point at them.
+    if (!progress.jobWritten) Drive_trashFiles(input.photos_after);
+    throw err;
+  }
   Jobs_notifyDone_(r.job);
   return Jobs_result_(r.job);
 }
@@ -269,14 +290,19 @@ function Jobs_ack(actor, jobId) {
   return Jobs_result_(Jobs_transition_(actor, jobId, 'ack', {}).job);
 }
 
-/** Re-reads the job under the lock, applies the transition, writes Jobs + JobLog (+ Parts). */
-function Jobs_transition_(actor, jobId, action, input) {
+/**
+ * Re-reads the job under the lock, applies the transition, writes Jobs + JobLog (+ Parts).
+ * `progress.jobWritten` (optional) turns true once the Jobs row is updated; Apps Script has no
+ * rollback, so callers use it to tell "nothing saved" from "saved, later write failed".
+ */
+function Jobs_transition_(actor, jobId, action, input, progress) {
   return Repo_withLock(function () {
     const found = Repo_findJob(jobId);
     if (!found) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
     const now = new Date();
     const t = Status_transition(found.job, action, actor, Object.assign({}, input, { now: now }));
     const job = Repo_update('Jobs', found.rowIndex, t.fields);
+    if (progress) progress.jobWritten = true;
     Repo_appendJobLog(job.job_id, actor, t.log, now);
     if (t.parts && t.parts.length) {
       Repo_appendRows('Parts', t.parts.map(function (p) { return Object.assign({ job_id: job.job_id }, p); }));
@@ -287,23 +313,41 @@ function Jobs_transition_(actor, jobId, action, input) {
 
 // --- notifications (push, PLAN §8) --------------------------------------------------
 
+// Notifications run after the state change is committed, so a failure here (card building,
+// a missing LIFF_ID, a sheet read) is logged and never turns a saved action into an error:
+// the caller would otherwise retry and, for createJob, create a duplicate job.
+function Jobs_notify_(card, job, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error('Notify %s for %s failed: %s', card, job && job.job_id, err.stack || err);
+  }
+}
+
 function Jobs_notifyNew_(job, recipients, note) {
   if (!recipients.length) return;
-  const config = Jobs_config_();
-  const first = Jobs_ids_(job.photos_before)[0];
-  const showPhoto = config.FLEX_SHOW_PHOTO === undefined || Routing_isTrue(config.FLEX_SHOW_PHOTO);
-  const photoUrl = first && showPhoto ? Drive_flexImageUrl(first) : '';
-  Line_push(recipients, [Flex_jobNew(job, Jobs_ref_(job), { note: note, photoUrl: photoUrl })]);
+  Jobs_notify_('job_new', job, function () {
+    const config = Jobs_config_();
+    const first = Jobs_ids_(job.photos_before)[0];
+    const showPhoto = config.FLEX_SHOW_PHOTO === undefined || Routing_isTrue(config.FLEX_SHOW_PHOTO);
+    const photoUrl = first && showPhoto ? Drive_flexImageUrl(first) : '';
+    Line_push(recipients, [Flex_jobNew(job, Jobs_ref_(job), { note: note, photoUrl: photoUrl })]);
+  });
 }
 
 /** job_done goes to the reporter; if the reporter is inactive, to the branch MANAGERs. */
 function Jobs_notifyDone_(job) {
-  const users = Jobs_tab_('Users').filter(Routing_isActiveUser);
-  const reporterActive = users.some(function (u) { return String(u.line_user_id) === String(job.reporter_id); });
-  const to = reporterActive ? [String(job.reporter_id)] : users
-    .filter(function (u) { return String(u.role).trim().toUpperCase() === 'MANAGER' && String(u.branch_code) === String(job.branch_code); })
-    .map(function (u) { return String(u.line_user_id); });
-  Line_push(to, [Flex_jobDone(job, Jobs_ref_(job))]);
+  Jobs_notify_('job_done', job, function () {
+    const reporterId = String(job.reporter_id || '').trim();
+    const users = Jobs_tab_('Users').filter(Routing_isActiveUser);
+    const reporterActive = users.some(function (u) { return Routing_userId_(u) === reporterId; });
+    const to = reporterActive ? [reporterId] : users
+      .filter(function (u) {
+        return String(u.role).trim().toUpperCase() === 'MANAGER' && String(u.branch_code).trim() === String(job.branch_code).trim();
+      })
+      .map(Routing_userId_);
+    Line_push(to, [Flex_jobDone(job, Jobs_ref_(job))]);
+  });
 }
 
 // --- helpers ------------------------------------------------------------------------
@@ -321,7 +365,7 @@ function Jobs_reassignOptions_() {
       const role = String(u.role || '').trim().toUpperCase();
       return Routing_isActiveUser(u) && (role === 'TECH' || role === 'ADMIN');
     }).map(function (u) {
-      return { user_id: String(u.line_user_id), name: String(u.real_name || u.display_name || ''), role: String(u.role).trim().toUpperCase() };
+      return { user_id: Routing_userId_(u), name: String(u.real_name || u.display_name || ''), role: String(u.role).trim().toUpperCase() };
     }),
     vendors: Jobs_tab_('Vendors').filter(function (v) { return v.name && Routing_isTrue(v.active); })
       .map(function (v) { return { vendor_id: String(v.vendor_id), name: String(v.name) }; }),
@@ -349,7 +393,7 @@ function Jobs_summary_(j) {
 
 function Jobs_publicUser_(u) {
   return {
-    line_user_id: String(u.line_user_id), display_name: u.display_name, real_name: u.real_name,
+    line_user_id: Routing_userId_(u), display_name: u.display_name, real_name: u.real_name,
     phone: String(u.phone || ''), role: String(u.role || '').trim().toUpperCase(),
     branch_code: u.branch_code, active: Routing_isTrue(u.active),
   };

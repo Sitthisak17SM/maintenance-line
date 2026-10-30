@@ -31,7 +31,7 @@ function Dev_smokeTest(categoryCode) {
 
   const job = result.job;
   const names = Jobs_ids_(job.candidate_ids).map(function (id) {
-    const u = Jobs_tab_('Users').find(function (x) { return String(x.line_user_id) === id; });
+    const u = Jobs_tab_('Users').find(function (x) { return Routing_userId_(x) === id; });
     return u ? (u.real_name || u.display_name) + ' (' + u.role + ')' : id;
   });
   console.log('Created %s status=%s route_to=%s', job.job_id, job.status, job.route_to);
@@ -70,7 +70,7 @@ function Dev_testFlexImage() {
       body: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: label, wrap: true, weight: 'bold' }] },
     };
   };
-  const res = Line_push(String(admin.line_user_id), [{
+  const res = Line_push(Routing_userId_(admin), [{
     type: 'flex',
     altText: 'ทดสอบรูปบนการ์ด',
     contents: {
