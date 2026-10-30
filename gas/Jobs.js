@@ -23,7 +23,7 @@ function Jobs_actor(userId) {
 
 function Jobs_actorFromUser_(u) {
   return {
-    userId: String(u.line_user_id),
+    userId: String(u.line_user_id || '').trim(), // hand-typed rows can carry a stray tab/space
     name: String(u.real_name || u.display_name || ''),
     role: String(u.role || '').trim().toUpperCase(),
     branch_code: String(u.branch_code || '').trim(),
