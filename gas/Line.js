@@ -21,9 +21,31 @@ function Line_reply(replyToken, messages) {
   return { ok: status === 200, status: status, body: status === 200 ? '' : res.getContentText() };
 }
 
-/** Phase 1: push notifications (counts toward quota, see PLAN §8). */
+/**
+ * Push to one user or several (multicast). Counts toward the monthly quota once per recipient,
+ * so only use it for the notifications in PLAN §8. Never throws; returns {ok, status, body}.
+ */
 function Line_push(to, messages) {
-  throw new Error('Line_push: not implemented (phase 1)');
+  const ids = (Array.isArray(to) ? to : [to])
+    .map(function (id) { return String(id || '').trim(); })
+    .filter(function (id, i, all) { return id && all.indexOf(id) === i; });
+  if (!ids.length) return { ok: true, status: 0, body: 'no recipients' };
+  const multicast = ids.length > 1;
+  try {
+    const res = UrlFetchApp.fetch(LINE_API_BASE + (multicast ? '/v2/bot/message/multicast' : '/v2/bot/message/push'), {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + Line_accessToken_() },
+      payload: JSON.stringify({ to: multicast ? ids : ids[0], messages: messages }),
+      muteHttpExceptions: true,
+    });
+    const status = res.getResponseCode();
+    if (status !== 200) console.error('LINE push to %s failed: %s %s', ids.join(','), status, res.getContentText());
+    return { ok: status === 200, status: status, body: status === 200 ? '' : res.getContentText() };
+  } catch (err) {
+    console.error('LINE push to %s failed: %s', ids.join(','), err);
+    return { ok: false, status: 0, body: String(err) };
+  }
 }
 
 /**
