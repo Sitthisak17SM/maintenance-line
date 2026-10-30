@@ -2,6 +2,7 @@
 
 const WEBHOOK_DEDUP_SECONDS = 6 * 3600;
 const WEBHOOK_PAYLOAD_MAX_CHARS = 49000; // sheet cell limit is 50,000
+const WEBHOOK_ENV_CACHE_SECONDS = 600; // a Config ENV change takes up to 10 min to apply
 
 function Webhook_handle(e) {
   const expected = PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY');
@@ -14,14 +15,10 @@ function Webhook_handle(e) {
     console.error('Webhook: invalid body');
     return Webhook_ok_();
   }
+  // The console's Verify button sends no events; answer before touching the sheet.
+  if (!events.length) return Webhook_ok_();
 
-  let isTest = false;
-  try {
-    isTest = Repo_getConfig().ENV === 'test';
-  } catch (err) {
-    console.error('Webhook: cannot read Config: %s', err);
-  }
-
+  const isTest = Webhook_env_() === 'test';
   events.forEach(function (event) {
     try {
       Webhook_handleEvent_(event, isTest);
@@ -35,6 +32,16 @@ function Webhook_handle(e) {
 function Webhook_handleEvent_(event, isTest) {
   if (Webhook_isDuplicate_(event.webhookEventId)) return;
 
+  if (event.source && event.source.type === 'user') {
+    if (event.type === 'follow') {
+      Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]);
+    } else if (event.type === 'message' && event.message.type === 'text') {
+      if (event.message.text.trim().toLowerCase() === 'ping') {
+        Line_reply(event.replyToken, [Line_text('pong')]);
+      }
+    }
+  }
+
   if (isTest) {
     Repo_append('WebhookLog', {
       at: new Date(),
@@ -44,16 +51,22 @@ function Webhook_handleEvent_(event, isTest) {
       payload: JSON.stringify(event).slice(0, WEBHOOK_PAYLOAD_MAX_CHARS),
     });
   }
+}
 
-  if (!event.source || event.source.type !== 'user') return;
-
-  if (event.type === 'follow') {
-    Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]);
-  } else if (event.type === 'message' && event.message.type === 'text') {
-    if (event.message.text.trim().toLowerCase() === 'ping') {
-      Line_reply(event.replyToken, [Line_text('pong')]);
+/** Config ENV, cached so most webhook calls skip opening the sheet. */
+function Webhook_env_() {
+  const cache = CacheService.getScriptCache();
+  let env = cache.get('cfg_env');
+  if (env === null) {
+    try {
+      env = String(Repo_getConfig().ENV || '');
+    } catch (err) {
+      console.error('Webhook: cannot read Config: %s', err);
+      return '';
     }
+    cache.put('cfg_env', env, WEBHOOK_ENV_CACHE_SECONDS);
   }
+  return env;
 }
 
 /** True if this webhookEventId was seen in the last 6 hours; marks it as seen otherwise. */
