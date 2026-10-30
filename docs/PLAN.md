@@ -59,7 +59,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | forward | ASSIGNED, ACCEPTED | ASSIGNED (NEW ถ้าไม่มี ADMIN ที่ active) | TECH ที่เป็น candidate หรือ assignee | เหตุผล (บังคับ), route_to = ADMIN, candidate_ids = ADMIN ทุกคน, ล้าง assignee, push job_new ให้ ADMIN พร้อมเหตุผล | 1 |
 | reassign | NEW, REJECTED, ASSIGNED, ACCEPTED | ASSIGNED | ADMIN | candidate_ids = คนที่เลือก (TECH หรือ ADMIN ที่ active) หรือ ADMIN เอง + vendor (ชื่อจากแท็บ Vendors), ล้าง assignee, assigned_at ใหม่, push job_new (ไม่ส่งให้ ADMIN ที่กดจ่ายงานเอง) | 1 |
 | checkin | ACCEPTED | IN_PROGRESS | assignee หรือ ADMIN | checkin_at | 1 |
-| close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause และ fix (บังคับ), แถว Parts (amount = qty × unit_price), cost_total, photos_after (อย่างน้อย 1 รูป server ตรวจด้วย), onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
+| close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause และ fix (ไม่บังคับ), แถว Parts (amount = qty × unit_price), cost_total, photos_after (อย่างน้อย 1 รูป server ตรวจด้วย), onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
 | ack | DONE | CLOSED | ผู้แจ้ง, MANAGER ของสาขานั้น, ADMIN | closed_at, ack_by, ack_at | 1 |
 | request_ext | ACCEPTED, IN_PROGRESS | (ไม่เปลี่ยน) | assignee | ext_pending = TRUE, ext_requested_due_at, ext_reason แล้ว push ext_request ให้ ADMIN | 2 |
 | decide_ext | งานที่ ext_pending = TRUE | (ไม่เปลี่ยน) | ADMIN | ext_pending = FALSE ถ้าอนุมัติ: due_at = ext_requested_due_at, ext_count + 1, ล้าง flag D75/DB แล้ว push ext_result | 2 |
@@ -389,8 +389,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 **ฟอร์มปิดงาน (ใน `job.html`)**
 
-- **สาเหตุ:** บังคับกรอก
-- **วิธีแก้:** บังคับกรอก
+- **สาเหตุ:** ไม่บังคับ (เปลี่ยน 30 ต.ค. 2026 ดู REQUIREMENTS R12)
+- **วิธีแก้:** ไม่บังคับ
 - **รายการอะไหล่:** เพิ่มหรือลบแถวได้ แต่ละแถวมี item, qty, unit_price, vendor
 - **รูป After:** อย่างน้อย 1 รูป
 - **ช่อง "ไม่มีคนอยู่หน้างาน":** ถ้าติ๊กต้องกรอก onsite_note

@@ -180,11 +180,11 @@ const Status_apply_ = {
     return { status: 'IN_PROGRESS', fields: { checkin_at: now } };
   },
 
-  // input: cause, fix (required), parts [{item, qty, unit_price, vendor, note}],
-  // photos_after (file IDs, at least 1, PLAN §9), onsite_note.
+  // input: cause, fix (optional since 30 Oct 2026, see REQUIREMENTS R12), parts
+  // [{item, qty, unit_price, vendor, note}], photos_after (file IDs, at least 1, PLAN §9), onsite_note.
   close: function (job, actor, input, now) {
-    const cause = Status_requireText_(input.cause, 'สาเหตุ', STATUS_TEXT_MAX);
-    const fix = Status_requireText_(input.fix, 'วิธีแก้ไข', STATUS_TEXT_MAX);
+    const cause = String(input.cause || '').trim().slice(0, STATUS_TEXT_MAX);
+    const fix = String(input.fix || '').trim().slice(0, STATUS_TEXT_MAX);
     const photos = Status_ids_(input.photos_after);
     if (!photos.length) throw Status_error('VALIDATION', 'ต้องแนบรูปหลังซ่อมอย่างน้อย 1 รูป');
     const parts = Status_parts(input.parts);

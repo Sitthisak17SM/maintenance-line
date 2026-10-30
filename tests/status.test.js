@@ -284,10 +284,20 @@ test('close without parts costs 0', () => {
   assert.deepEqual(r.parts, []);
 });
 
-test('close requires cause, fix and at least one After photo', () => {
-  assertCode(() => run(job('ACCEPTED'), 'close', U.tech1, { cause: '' }), 'VALIDATION');
-  assertCode(() => run(job('ACCEPTED'), 'close', U.tech1, { fix: ' ' }), 'VALIDATION');
+// Cause and fix are optional (AOF, 30 Oct 2026, overriding R12); the After photo stays required.
+test('close requires at least one After photo; cause and fix are optional', () => {
   assertCode(() => run(job('ACCEPTED'), 'close', U.tech1, { photos_after: [] }), 'VALIDATION');
+  const r = run(job('ACCEPTED'), 'close', U.tech1, { cause: '', fix: ' ' });
+  assert.equal(r.status, 'DONE');
+  assert.equal(r.fields.cause, '');
+  assert.equal(r.fields.fix, '');
+  assert.equal(run(job('ACCEPTED'), 'close', U.tech1, { cause: undefined, fix: undefined }).status, 'DONE');
+});
+
+test('close trims and caps cause and fix', () => {
+  const r = run(job('ACCEPTED'), 'close', U.tech1, { cause: '  หลอดขาด ', fix: 'x'.repeat(3000) });
+  assert.equal(r.fields.cause, 'หลอดขาด');
+  assert.equal(r.fields.fix.length, 2000);
 });
 
 test('close: assignee or ADMIN only', () => {

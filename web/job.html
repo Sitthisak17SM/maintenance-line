@@ -196,8 +196,8 @@
 
       const form = el('form', { class: 'card', novalidate: true },
         el('h2', { style: 'margin-top:0' }, 'ปิดงาน'),
-        field('สาเหตุของปัญหา', cause),
-        field('วิธีแก้ไข', fix),
+        field('สาเหตุของปัญหา (ไม่บังคับ)', cause),
+        field('วิธีแก้ไข (ไม่บังคับ)', fix),
         el('div', { class: 'field' }, el('span', { class: 'label' }, 'อะไหล่และค่าใช้จ่าย'), partsBox,
           el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { partsBox.appendChild(partRow()); } }, '+ เพิ่มรายการ'),
           el('p', {}, 'รวม ', total)),
@@ -208,8 +208,6 @@
 
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
-        if (!cause.value.trim()) return invalid(msg, 'กรุณากรอกสาเหตุของปัญหา', cause);
-        if (!fix.value.trim()) return invalid(msg, 'กรุณากรอกวิธีแก้ไข', fix);
         const parts = readParts();
         const bad = parts.find(function (p) { return !p.item || !(Number(p.qty) > 0) || !(Number(p.unit_price) >= 0) || p.unit_price === ''; });
         if (bad) return invalid(msg, 'กรุณากรอกรายการ จำนวน และราคาของอะไหล่ให้ครบ', partsBox);
