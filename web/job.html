@@ -7,8 +7,224 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <!-- Placeholder: built in phase 1 (PLAN §9). -->
-  <h1>รายละเอียดงาน</h1>
-  <p class="label">หน้านี้ยังไม่เปิดใช้งาน</p>
+  <main id="app"></main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/image.js"></script>
+  <script>
+    let ME = null;
+    const JOB_ID = param('id');
+
+    (async function () {
+      ME = await startPage();
+      if (!ME) return;
+      if (!JOB_ID) return showError(new Error('ไม่ได้ระบุเลขงาน'));
+      await load(param('do'));
+    })();
+
+    async function load(openForm) {
+      showLoading();
+      let data;
+      try {
+        data = await api('getJob', { job_id: JOB_ID });
+      } catch (err) {
+        return showError(err);
+      }
+      render(view(data, openForm));
+    }
+
+    function view(data, openForm) {
+      const job = data.job;
+      const can = function (a) { return data.allowed_actions.indexOf(a) !== -1; };
+      const branchName = nameOf(ME.branches, 'branch_code', job.branch_code, 'name');
+      const categoryName = nameOf(ME.categories, 'category_code', job.category_code, 'name_th');
+      const handler = job.vendor ? job.vendor + ' (ช่างนอก)' : job.assignee_name;
+
+      return [
+        el('div', {}, el('strong', {}, job.job_id), ' ', priorityBadge(job.priority), ' ', statusBadge(job.status)),
+        el('h1', { style: 'margin-top:8px' }, job.title),
+        job.detail ? el('p', { style: 'white-space:pre-wrap' }, job.detail) : null,
+        el('div', { class: 'card' },
+          row('ร้าน · Area', branchName + ' · ' + (job.area || '-')),
+          row('หมวด', categoryName),
+          row('ผู้แจ้ง', job.reporter_name || '-'),
+          job.reporter_phone ? row('โทร', el('a', { href: 'tel:' + String(job.reporter_phone).replace(/[^0-9+]/g, '') }, job.reporter_phone)) : null,
+          row('ผู้รับงาน', handler || '-'),
+          row('แจ้งเมื่อ', fmtDate(job.created_at)),
+          row('ต้องเข้าหน้างานภายใน', fmtDate(job.response_due_at)),
+          row('กำหนดเสร็จ', fmtDate(job.due_at)),
+          job.accepted_at ? row('รับงาน', fmtDate(job.accepted_at)) : null,
+          job.checkin_at ? row('ถึงหน้างาน', fmtDate(job.checkin_at)) : null,
+          job.done_at ? row('ซ่อมเสร็จ', fmtDate(job.done_at)) : null,
+          job.closed_at ? row('รับทราบ', fmtDate(job.closed_at)) : null),
+        photoSection('รูปก่อนซ่อม', data.photos_before_urls),
+        resultSection(job, data.parts),
+        photoSection('รูปหลังซ่อม', data.photos_after_urls),
+        actions(job, can, openForm),
+        logSection(data.log),
+      ];
+    }
+
+    function row(k, v) {
+      return el('div', { class: 'row' }, el('span', { class: 'k' }, k), el('span', { class: 'v' }, v));
+    }
+
+    function photoSection(title, urls) {
+      if (!urls || !urls.length) return null;
+      return [el('h2', {}, title), el('div', { class: 'photos' }, urls.map(function (u, i) {
+        return el('a', { href: u.replace(/sz=w\d+/, 'sz=w2000'), target: '_blank', rel: 'noopener' }, el('img', { src: u, alt: title + ' ' + (i + 1), loading: 'lazy' }));
+      }))];
+    }
+
+    function resultSection(job, parts) {
+      if (!job.cause && !job.fix && !(parts && parts.length)) return null;
+      return [
+        el('h2', {}, 'ผลการซ่อม'),
+        el('div', { class: 'card' },
+          row('สาเหตุ', job.cause || '-'),
+          row('วิธีแก้', job.fix || '-'),
+          job.onsite_note ? row('หมายเหตุหน้างาน', job.onsite_note) : null,
+          (parts || []).map(function (p) {
+            return row(p.item + ' × ' + p.qty + (p.vendor ? ' (' + p.vendor + ')' : ''), fmtMoney(p.amount));
+          }),
+          row('รวมค่าใช้จ่าย', el('strong', {}, fmtMoney(job.cost_total)))),
+      ];
+    }
+
+    function logSection(log) {
+      if (!log || !log.length) return null;
+      return [el('h2', {}, 'ประวัติ'), el('ul', { class: 'timeline' }, log.map(function (l) {
+        return el('li', {},
+          el('div', { class: 'when' }, fmtDate(l.at) + ' · ' + (l.actor_name || '-')),
+          el('div', {}, (ACTION_TH[l.action] || l.action) + (l.to_status ? ' → ' + (STATUS_TH[l.to_status] || l.to_status) : '')),
+          l.reason ? el('div', { class: 'muted' }, 'เหตุผล: ' + l.reason) : null);
+      }))];
+    }
+
+    // --- actions (only those the server allows for this user and status) -------------------
+
+    function actions(job, can, openForm) {
+      const msg = el('p', { class: 'msg', hidden: true });
+      const formSlot = el('div', {});
+      const buttons = [];
+
+      function simple(action, apiAction, label, cls) {
+        if (!can(action)) return;
+        const b = el('button', { type: 'button', class: 'btn ' + (cls || '') });
+        b.textContent = label;
+        b.addEventListener('click', async function () {
+          const ok = await busy(b, msg, 'กำลังบันทึก…', function () { return api(apiAction, { job_id: job.job_id }); });
+          if (ok) load();
+        });
+        buttons.push(b);
+      }
+      function toggle(action, label, build, cls) {
+        if (!can(action)) return;
+        const b = el('button', { type: 'button', class: 'btn ' + (cls || 'btn-secondary') }, label);
+        const open = function () { clear(formSlot).appendChild(build()); setMessage(msg, null); formSlot.scrollIntoView({ behavior: 'smooth' }); };
+        b.addEventListener('click', open);
+        buttons.push(b);
+        if (openForm === action) setTimeout(open, 0);
+      }
+
+      simple('accept', 'acceptJob', 'รับงาน');
+      simple('checkin', 'checkin', 'ถึงหน้างานแล้ว (Check-in)');
+      toggle('close', 'ปิดงาน', function () { return closeForm(job); }, ' ');
+      simple('ack', 'ackJob', 'รับทราบงาน');
+      toggle('reject', 'ปฏิเสธงาน', function () { return reasonForm(job, 'rejectJob', 'เหตุผลที่ปฏิเสธ', 'ยืนยันปฏิเสธ', 'btn-danger'); });
+      toggle('forward', 'ส่งต่อช่างนอก', function () { return reasonForm(job, 'forwardJob', 'เหตุผลที่ต้องใช้ช่างนอก', 'ยืนยันส่งต่อให้ Admin'); });
+      if (can('reassign')) buttons.push(el('a', { class: 'btn btn-secondary', href: 'admin.html?id=' + encodeURIComponent(job.job_id) }, 'จ่ายงาน / เลือกช่างนอก'));
+
+      if (!buttons.length) return null;
+      return el('div', { class: 'panel' }, el('h2', {}, 'ดำเนินการ'), buttons, msg, formSlot);
+    }
+
+    function reasonForm(job, apiAction, label, submitLabel, cls) {
+      const reason = el('textarea', { maxlength: 500 });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn ' + (cls || '') }, submitLabel);
+      const form = el('form', { class: 'card', novalidate: true }, field(label, reason), msg, submit);
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (!reason.value.trim()) return setMessage(msg, new Error('กรุณากรอกเหตุผล'));
+        const ok = await busy(submit, msg, 'กำลังบันทึก…', function () { return api(apiAction, { job_id: job.job_id, reason: reason.value }); });
+        if (ok) load();
+      });
+      setTimeout(function () { reason.focus(); }, 0);
+      return form;
+    }
+
+    function closeForm(job) {
+      const cause = el('textarea', { maxlength: 2000 });
+      const fix = el('textarea', { maxlength: 2000 });
+      const partsBox = el('div', {});
+      const total = el('strong', {}, fmtMoney(0));
+      const photos = photoPicker(ME.config.PHOTO_MAX_COUNT, ME.config.PHOTO_MAX_EDGE_PX, 'ถ่าย/เลือกรูปหลังซ่อม');
+      const nobody = el('input', { type: 'checkbox' });
+      const onsiteNote = el('textarea', { maxlength: 2000, placeholder: 'เช่น ร้านยังไม่เปิด ฝากกุญแจไว้กับ รปภ.' });
+      const onsiteField = field('หมายเหตุหน้างาน', onsiteNote);
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn' }, 'ยืนยันปิดงาน');
+      onsiteField.hidden = true;
+      nobody.addEventListener('change', function () { onsiteField.hidden = !nobody.checked; });
+
+      function partRow() {
+        const item = el('input', { type: 'text', maxlength: 200, placeholder: 'รายการ' });
+        const qty = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', placeholder: 'จำนวน', value: '1' });
+        const price = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', placeholder: 'ราคาต่อหน่วย' });
+        const vendor = el('input', { type: 'text', maxlength: 100, placeholder: 'ร้านที่ซื้อ (ถ้ามี)' });
+        const box = el('div', { class: 'part' },
+          field('รายการ', item),
+          el('div', { class: 'part-grid' }, field('จำนวน', qty), field('ราคา/หน่วย (บาท)', price)),
+          field('ร้านที่ซื้อ', vendor),
+          el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { box.remove(); sum(); } }, 'ลบรายการนี้'));
+        box.read = function () { return { item: item.value.trim(), qty: qty.value, unit_price: price.value, vendor: vendor.value.trim() }; };
+        [qty, price].forEach(function (i) { i.addEventListener('input', sum); });
+        return box;
+      }
+      function readParts() {
+        return Array.from(partsBox.children).map(function (b) { return b.read(); })
+          .filter(function (p) { return p.item || Number(p.unit_price); });
+      }
+      function sum() {
+        total.textContent = fmtMoney(readParts().reduce(function (s, p) { return s + (Number(p.qty) || 0) * (Number(p.unit_price) || 0); }, 0));
+      }
+
+      const form = el('form', { class: 'card', novalidate: true },
+        el('h2', { style: 'margin-top:0' }, 'ปิดงาน'),
+        field('สาเหตุของปัญหา', cause),
+        field('วิธีแก้ไข', fix),
+        el('div', { class: 'field' }, el('span', { class: 'label' }, 'อะไหล่และค่าใช้จ่าย'), partsBox,
+          el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { partsBox.appendChild(partRow()); } }, '+ เพิ่มรายการ'),
+          el('p', {}, 'รวม ', total)),
+        el('div', { class: 'field' }, el('span', { class: 'label' }, 'รูปหลังซ่อม (อย่างน้อย 1 รูป)'), photos.node),
+        el('label', { class: 'choice' }, nobody, el('span', {}, 'ไม่มีคนอยู่หน้างาน')),
+        onsiteField,
+        msg, submit);
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (!cause.value.trim()) return setMessage(msg, new Error('กรุณากรอกสาเหตุของปัญหา'));
+        if (!fix.value.trim()) return setMessage(msg, new Error('กรุณากรอกวิธีแก้ไข'));
+        const parts = readParts();
+        const bad = parts.find(function (p) { return !p.item || !(Number(p.qty) > 0) || !(Number(p.unit_price) >= 0) || p.unit_price === ''; });
+        if (bad) return setMessage(msg, new Error('กรุณากรอกรายการ จำนวน และราคาของอะไหล่ให้ครบ'));
+        if (!photos.count()) return setMessage(msg, new Error('กรุณาแนบรูปหลังซ่อมอย่างน้อย 1 รูป'));
+        if (nobody.checked && !onsiteNote.value.trim()) return setMessage(msg, new Error('ไม่มีคนอยู่หน้างาน กรุณากรอกหมายเหตุ'));
+        const ok = await busy(submit, msg, 'กำลังส่งรูปและบันทึก…', function () {
+          return api('closeJob', {
+            job_id: job.job_id, cause: cause.value, fix: fix.value, parts: parts,
+            photos: photos.photos(), onsite_note: nobody.checked ? onsiteNote.value : '',
+          });
+        });
+        if (ok) load();
+      });
+      return form;
+    }
+  </script>
 </body>
 </html>
