@@ -142,15 +142,14 @@ function Repo_appendRows(name, objs) {
 
 /**
  * setValues parses strings like typed input, so user text such as "=IMPORTXML(...)" would
- * become a live formula. Plain-text (@) columns (Setup SETUP_TEXT_COLUMNS) store text as is;
- * in any other column a string starting with = + - @ gets a leading apostrophe, which Sheets
- * keeps as text and getValues returns without the apostrophe.
+ * become a live formula, even in plain-text (@) columns (tested 30 Oct 2026: "=1+1" was stored
+ * as a formula showing 2). The @ format only stops dates/numbers. So every string starting
+ * with = + - @ gets a leading apostrophe, which Sheets keeps as a text marker.
  */
 function Repo_safeRows_(range, rows) {
-  const formats = range.getNumberFormats();
-  return rows.map(function (row, r) {
-    return row.map(function (v, c) {
-      return typeof v === 'string' && /^[=+\-@]/.test(v) && formats[r][c] !== '@' ? "'" + v : v;
+  return rows.map(function (row) {
+    return row.map(function (v) {
+      return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v;
     });
   });
 }
