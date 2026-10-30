@@ -40,3 +40,76 @@ button {
   background: #06c755;
   color: #fff;
 }
+
+/* --- LIFF pages --------------------------------------------------------------- */
+
+body { max-width: 640px; margin: 0 auto; font-size: 16px; }
+h2 { font-size: 1.05rem; margin: 20px 0 8px; }
+.muted { color: var(--muted); }
+.center { text-align: center; padding: 48px 0; }
+.center .btn { margin-top: 12px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.spinner {
+  width: 36px; height: 36px; margin: 0 auto 12px;
+  border: 4px solid var(--card); border-top-color: #06c755; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.btn { display: block; width: 100%; min-height: 48px; font-weight: 600; margin-top: 8px; }
+.btn:disabled { opacity: 0.55; }
+.btn-secondary { background: #e6e9ee; color: var(--fg); }
+.btn-danger { background: var(--err); }
+.btn-row { display: flex; gap: 8px; }
+.btn-row .btn { flex: 1; }
+a.btn { text-align: center; text-decoration: none; line-height: 48px; padding: 0 16px; border-radius: 8px; background: #06c755; color: #fff; }
+
+.field { display: block; margin-bottom: 14px; }
+.field .label { display: block; font-weight: 600; margin-bottom: 4px; }
+.field .hint { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+input[type=text], input[type=tel], input[type=number], select, textarea {
+  width: 100%; font: inherit; padding: 10px 12px; min-height: 44px;
+  border: 1px solid #d0d7de; border-radius: 8px; background: #fff; color: var(--fg);
+}
+textarea { min-height: 88px; resize: vertical; }
+.choice { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; border: 1px solid #d0d7de; border-radius: 8px; }
+.choice input { width: 20px; height: 20px; margin: 0; }
+
+.msg { margin: 8px 0; }
+.msg[hidden] { display: none; }
+
+.badge { display: inline-block; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; vertical-align: middle; }
+.status { display: inline-block; font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: #e6e9ee; }
+.status-assigned, .status-new, .status-rejected { background: #fff1e0; color: #a14e00; }
+.status-accepted, .status-in_progress { background: #e3f0ff; color: #0b5cad; }
+.status-done { background: #f3e8ff; color: #6b21a8; }
+.status-closed { background: #e6f6ea; color: var(--ok); }
+
+.row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #eef0f3; }
+.row .k { color: var(--muted); flex-shrink: 0; }
+.row .v { text-align: right; }
+
+.thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 4px; }
+.thumbs:empty { display: none; }
+.thumb { position: relative; aspect-ratio: 1; }
+.thumb img, .photos img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; background: var(--card); }
+.thumb-remove { position: absolute; top: 2px; right: 2px; width: 28px; height: 28px; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); }
+.photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.photos a { aspect-ratio: 1; display: block; }
+
+.tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px; }
+.tabs button { background: #e6e9ee; color: var(--fg); white-space: nowrap; padding: 8px 14px; }
+.tabs button.active { background: #06c755; color: #fff; }
+
+.job-item { display: block; color: inherit; text-decoration: none; }
+.job-item .title { font-weight: 600; margin: 4px 0; }
+.job-item .meta { color: var(--muted); font-size: 0.85rem; }
+
+.timeline { list-style: none; padding: 0; margin: 0; }
+.timeline li { padding: 6px 0 6px 14px; border-left: 2px solid #d0d7de; font-size: 0.9rem; }
+.timeline .when { color: var(--muted); font-size: 0.8rem; }
+
+.part { border: 1px solid #d0d7de; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.part-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.panel { border-top: 1px solid #eef0f3; margin-top: 16px; padding-top: 8px; }

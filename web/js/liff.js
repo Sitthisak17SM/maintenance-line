@@ -17,3 +17,30 @@ async function initLiff() {
   }
   return liff.getIDToken();
 }
+
+/**
+ * Page bootstrap (PLAN §9 steps 1-5): init LIFF, log in, call `me`, and send unregistered
+ * users to register.html (which comes back here afterwards). Resolves to the `me` result,
+ * or to null while the page is redirecting.
+ */
+async function startPage(options) {
+  const opts = options || {};
+  showLoading();
+  try {
+    const idToken = await initLiff();
+    if (!idToken) return null;
+    const me = await api('me');
+    if (opts.requireUser !== false && !me.user) {
+      location.replace('register.html?next=' + encodeURIComponent(location.pathname.split('/').pop() + location.search));
+      return null;
+    }
+    if (me.user && !me.user.active) {
+      showError(new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ'));
+      return null;
+    }
+    return me;
+  } catch (err) {
+    showError(err);
+    return null;
+  }
+}
