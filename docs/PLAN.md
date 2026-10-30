@@ -165,7 +165,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 **Areas** (ใส่ branch_code เป็น `*` = ใช้ได้ทุกร้าน): บาร์, ครัว, ห้องน้ำชาย, ห้องน้ำหญิง, ทางเข้า / หน้าร้าน, โซนลูกค้า, Outdoor, ห้องเก็บของ / สโตร์, ห้องเครื่องเสียง / ดีเจ, อื่นๆ
 
-**Vendors:** ย้ายมาจากแท็บ `supplier` ในไฟล์เดิม แล้วเพิ่มผู้รับเหมาที่เคยใช้ในประวัติงาน เช่น Daikin, 66 Kitchen, VJ Group
+**Vendors:** ย้ายมาจากแท็บ `supplier` ในไฟล์เดิม แล้วเพิ่มผู้รับเหมาที่เคยใช้ในประวัติงาน เช่น Daikin, 66 Kitchen, VJ Group (เฟส 0 ใส่ไว้แค่ V001 Daikin, V002 66 Kitchen, V003 VJ Group ช่อง type ว่าง ส่วนแท็บ `supplier` ยังไม่ได้ย้าย)
 
 **Config**
 
@@ -275,6 +275,12 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 **การตอบกลับ:** ลองตอบด้วย `HtmlService.createHtmlOutput('OK')` ในเฟส 0 แล้วบันทึกผลไว้ใน §18
 
 **ความเร็ว:** งานใน webhook ต้องเบา คือเขียนชีตครั้งเดียวและ reply ครั้งเดียว
+
+- คำขอที่ไม่มี event (ปุ่ม Verify) ตอบทันทีโดยไม่เปิดชีต
+- ค่า `ENV` จากแท็บ Config cache ไว้ 10 นาที (cache key `cfg_env`) แก้ ENV แล้วรอได้ถึง 10 นาที
+- reply ก่อนเขียน WebhookLog และเขียน WebhookLog เสมอแม้ reply ล้มเหลว
+
+**การวินิจฉัย:** log ของ Web App ที่ LINE เรียกไม่แสดงใน editor จึงเก็บขั้นตอนล่าสุด 20 บรรทัดไว้ใน cache (`diag_webhook`) แล้วรัน `Setup_check()` ใน editor เพื่อดู พร้อมเช็คว่า Script Properties ครบ (แสดงแค่ความยาว ไม่แสดงค่า) และ token ใช้ได้
 
 ## 8. การ์ดแจ้งเตือนและโควตา
 
@@ -498,7 +504,7 @@ maintenance-line/
 │   ├── Repo.js          sheet access by header name + LockService
 │   ├── Drive.js         base64 → file, sharing
 │   ├── Triggers.js      Sla_tick, Triggers_install
-│   ├── Setup.js         Setup_init, Setup_migrateLegacy
+│   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
 │   └── core/            pure logic, Node-testable
 │       ├── Status.js  Sla.js  Routing.js  JobId.js  Kpi.js
 ├── web/
