@@ -10,7 +10,7 @@ class ApiError extends Error {
 /** Resolves to `data` on success; throws ApiError(code, message) otherwise. */
 async function api(action, data) {
   if (!CONFIG.API_URL) throw new ApiError('CONFIG', 'ยังไม่ได้ตั้งค่า API_URL ใน js/config.js');
-  const idToken = typeof liff !== 'undefined' && liff.isLoggedIn() ? liff.getIDToken() : null;
+  const idToken = typeof liffReady !== 'undefined' && liffReady && liff.isLoggedIn() ? liff.getIDToken() : null;
   const res = await fetch(CONFIG.API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
