@@ -355,6 +355,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 4. เรียก `api('me')`
 5. ถ้ายังไม่ลงทะเบียนให้พาไปหน้า register
 
+ขั้นตอนนี้อยู่ใน `startPage()` หน้า register รับ `?next=<page>.html?...` เพื่อพากลับหน้าเดิม และรับเฉพาะชื่อหน้าของเราเท่านั้น (กัน redirect ออกนอกเว็บ) โค้ดของแต่ละหน้าอยู่ใน `<script>` ท้ายไฟล์ HTML นั้น ข้อความที่ผู้ใช้กรอกใส่ผ่าน `textContent` เสมอ (`el()` ใน `js/ui.js`) ห้ามใช้ `innerHTML` เมื่อกรอกฟอร์มไม่ครบ หน้าจะเลื่อนไปที่ช่องนั้นและขึ้นกรอบแดง (`invalid()`)
+
 | ไฟล์ | ใช้โดย | ทำอะไร | เฟส |
 |---|---|---|---|
 | index.html | — | LIFF endpoint: เรียก liff.init แล้วพาไปหน้าตาม path | 0 |
@@ -363,7 +365,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | report.html | ผู้แจ้ง | ฟอร์มแจ้งซ่อมพร้อมรูป | 1 |
 | job.html?id= | ผู้เกี่ยวข้อง | รายละเอียด รูป ประวัติจาก JobLog และปุ่มตามสิทธิ์กับสถานะ (`&do=reject` เปิดฟอร์มปฏิเสธทันที) | 1 |
 | jobs.html | ทุกคน | รายการงานตาม scope กรองตามสถานะและร้านได้ | 1 |
-| admin.html?id= | ADMIN | จ่ายงานใหม่หรือเลือกช่างนอก (เฟส 1) แก้ความเร่งด่วน อนุมัติขอเลื่อน ยกเลิก (เฟส 2) | 1–2 |
+| admin.html?id= | ADMIN | จ่ายงานใหม่หรือเลือกช่างนอก (เฟส 1) แก้ความเร่งด่วน อนุมัติขอเลื่อน ยกเลิก (เฟส 2) ถ้าไม่มี `id` แสดงรายการงานรอจ่าย (NEW, REJECTED, ASSIGNED) | 1–2 |
 | dashboard.html | ADMIN, VIEWER | กราฟ KPI ด้วย Chart.js | 2 |
 
 **ฟอร์มแจ้งซ่อม (`report.html`)**
@@ -517,7 +519,8 @@ maintenance-line/
 ├── CLAUDE.md
 ├── README.md
 ├── .clasp.json          {"scriptId": "...", "rootDir": "gas"} (รัน clasp ที่ root)
-├── docs/                PLAN.md, REQUIREMENTS.md, SETUP.md, PROMPTS.md
+├── docs/                PLAN.md, REQUIREMENTS.md, SETUP.md, PROMPTS.md, TEST_PHASE1.md
+├── assets/              richmenu.png (2500×843, เทมเพลต 2 ช่องขนาดเล็ก)
 ├── gas/                 โค้ดที่ clasp push ขึ้น Apps Script
 │   ├── appsscript.json  V8, Asia/Bangkok, webapp: executeAs USER_DEPLOYING, access ANYONE_ANONYMOUS
 │   ├── Main.js          doGet/doPost dispatch
