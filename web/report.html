@@ -7,8 +7,115 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <!-- Placeholder: built in phase 1 (PLAN §9). -->
-  <h1>แจ้งซ่อม</h1>
-  <p class="label">หน้านี้ยังไม่เปิดใช้งาน</p>
+  <main id="app"></main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/image.js"></script>
+  <script>
+    const AREA_OTHER = 'อื่นๆ';
+
+    (async function () {
+      const me = await startPage();
+      if (!me) return;
+      const user = me.user;
+
+      const branch = el('select', {},
+        option('', '— เลือกร้าน —'),
+        me.branches.map(function (b) { return option(b.branch_code, b.name, b.branch_code === user.branch_code); }));
+      const area = el('select', {});
+      const areaOther = el('input', { type: 'text', maxlength: 100, placeholder: 'ระบุจุดที่เสีย' });
+      const areaOtherField = field('ระบุ Area', areaOther);
+      const category = el('select', {},
+        option('', '— เลือกหมวด —'),
+        me.categories.map(function (c) { return option(c.category_code, c.name_th); }));
+      const title = el('input', { type: 'text', maxlength: 80, placeholder: 'เช่น หลอดไฟหน้าบาร์ไม่ติด' });
+      const detail = el('textarea', { maxlength: 2000, placeholder: 'อาการ ตำแหน่ง หรือข้อมูลเพิ่มเติม' });
+      const phone = el('input', { type: 'tel', maxlength: 20, inputmode: 'tel', value: user.phone || '' });
+      const priorities = me.sla.map(function (s, i) {
+        return el('label', { class: 'choice' },
+          el('input', { type: 'radio', name: 'priority', value: s.priority, checked: s.priority === 'NORMAL' || (i === 0 && !me.sla.some(function (x) { return x.priority === 'NORMAL'; })) }),
+          priorityBadge(s.priority), el('span', {}, s.label_th));
+      });
+      const photos = photoPicker(me.config.PHOTO_MAX_COUNT, me.config.PHOTO_MAX_EDGE_PX, 'ถ่าย/เลือกรูป');
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn' }, 'ส่งแจ้งซ่อม');
+
+      // Areas: the branch's own list plus the shared '*' list, with "อื่นๆ" opening a text box.
+      function fillAreas() {
+        const names = [];
+        me.areas.forEach(function (a) {
+          if ((a.branch_code === branch.value || a.branch_code === '*') && names.indexOf(a.area_name) === -1) names.push(a.area_name);
+        });
+        if (names.indexOf(AREA_OTHER) === -1) names.push(AREA_OTHER);
+        clear(area);
+        area.appendChild(option('', '— เลือก Area —'));
+        names.forEach(function (n) { area.appendChild(option(n, n)); });
+        toggleOther();
+      }
+      function toggleOther() {
+        areaOtherField.hidden = area.value !== AREA_OTHER;
+      }
+      branch.addEventListener('change', fillAreas);
+      area.addEventListener('change', toggleOther);
+      fillAreas();
+
+      const form = el('form', { novalidate: true },
+        field('ร้าน', branch),
+        field('Area (จุดในร้าน)', area),
+        areaOtherField,
+        field('หมวด', category),
+        field('หัวข้อ (สิ่งที่เสีย)', title),
+        field('รายละเอียด', detail),
+        el('div', { class: 'field' }, el('span', { class: 'label' }, 'ความเร่งด่วน'), priorities),
+        field('เบอร์โทรติดต่อ', phone),
+        el('div', { class: 'field' }, el('span', { class: 'label' }, 'รูป (ไม่เกิน ' + me.config.PHOTO_MAX_COUNT + ' รูป)'), photos.node),
+        msg, submit);
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const areaValue = area.value === AREA_OTHER ? areaOther.value.trim() || AREA_OTHER : area.value;
+        const priority = (form.querySelector('input[name=priority]:checked') || {}).value;
+        if (!branch.value) return setMessage(msg, new Error('กรุณาเลือกร้าน'));
+        if (!areaValue) return setMessage(msg, new Error('กรุณาเลือก Area'));
+        if (!category.value) return setMessage(msg, new Error('กรุณาเลือกหมวด'));
+        if (!title.value.trim()) return setMessage(msg, new Error('กรุณากรอกหัวข้อ'));
+        if (!priority) return setMessage(msg, new Error('กรุณาเลือกความเร่งด่วน'));
+
+        const result = await busy(submit, msg, photos.count() ? 'กำลังส่งรูปและบันทึก…' : 'กำลังบันทึก…', function () {
+          return api('createJob', {
+            branch_code: branch.value, area: areaValue, category_code: category.value,
+            title: title.value, detail: detail.value, priority: priority, phone: phone.value,
+            photos: photos.photos(),
+          });
+        });
+        if (!result) return;
+        await done(result.job_id);
+      });
+
+      render(el('h1', {}, 'แจ้งซ่อม'), form);
+    })();
+
+    // PLAN §9: in a 1:1 chat with the OA, post the job number so the webhook replies with job_received (free).
+    async function done(jobId) {
+      if (liff.isInClient() && (liff.getContext() || {}).type === 'utou') {
+        try {
+          await liff.sendMessages([{ type: 'text', text: jobId }]);
+          liff.closeWindow();
+          return;
+        } catch (err) {
+          console.warn('sendMessages failed', err);
+        }
+      }
+      render(el('div', { class: 'center' },
+        el('h1', {}, 'แจ้งซ่อมเรียบร้อย'),
+        el('p', {}, 'เลขงาน ', el('strong', {}, jobId)),
+        el('a', { class: 'btn', href: 'job.html?id=' + encodeURIComponent(jobId) }, 'ดูสถานะงาน'),
+        el('a', { class: 'btn btn-secondary', href: 'report.html' }, 'แจ้งงานอื่น')));
+    }
+  </script>
 </body>
 </html>
