@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>แจ้งซ่อม</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- LIFF endpoint: liff.init() redirects https://liff.line.me/{LIFF_ID}/<page>.html to that page. -->
+  <h1>แจ้งซ่อม</h1>
+  <p id="status" class="label">กำลังเปิด…</p>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script>
+    initLiff()
+      .then(function () {
+        document.getElementById('status').textContent = 'พร้อมใช้งาน';
+      })
+      .catch(function (err) {
+        const el = document.getElementById('status');
+        el.textContent = 'เปิดไม่สำเร็จ: ' + err.message;
+        el.className = 'err';
+      });
+  </script>
+</body>
+</html>

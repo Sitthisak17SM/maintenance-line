@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ตรวจระบบ</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <h1>ตรวจระบบ (สำหรับนักพัฒนา)</h1>
+
+  <div class="card">
+    <div class="label">API ping</div>
+    <div id="ping">กำลังตรวจ…</div>
+  </div>
+  <div class="card">
+    <div class="label">userId</div>
+    <div id="userId">–</div>
+  </div>
+  <div class="card">
+    <div class="label">ชื่อ</div>
+    <div id="displayName">–</div>
+  </div>
+  <p id="error" class="err"></p>
+  <button type="button" onclick="location.reload()">ลองใหม่</button>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    function show(id, text, cls) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      if (cls) el.className = cls;
+    }
+
+    (async function () {
+      try {
+        const pong = await api('ping');
+        show('ping', 'OK (' + pong.at + ')', 'ok');
+      } catch (err) {
+        show('ping', 'ไม่สำเร็จ', 'err');
+        show('error', (err.code || 'ERROR') + ': ' + err.message);
+        return;
+      }
+      try {
+        const idToken = await initLiff();
+        if (!idToken) return; // redirecting to LINE login
+        const me = await api('whoami');
+        show('userId', me.userId, 'ok');
+        show('displayName', me.displayName || '(ไม่มีชื่อ)');
+      } catch (err) {
+        show('error', (err.code || 'ERROR') + ': ' + err.message);
+      }
+    })();
+  </script>
+</body>
+</html>
