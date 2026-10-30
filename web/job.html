@@ -150,7 +150,7 @@
       const form = el('form', { class: 'card', novalidate: true }, field(label, reason), msg, submit);
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
-        if (!reason.value.trim()) return setMessage(msg, new Error('กรุณากรอกเหตุผล'));
+        if (!reason.value.trim()) return invalid(msg, 'กรุณากรอกเหตุผล', reason);
         const ok = await busy(submit, msg, 'กำลังบันทึก…', function () { return api(apiAction, { job_id: job.job_id, reason: reason.value }); });
         if (ok) load();
       });
@@ -208,13 +208,13 @@
 
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
-        if (!cause.value.trim()) return setMessage(msg, new Error('กรุณากรอกสาเหตุของปัญหา'));
-        if (!fix.value.trim()) return setMessage(msg, new Error('กรุณากรอกวิธีแก้ไข'));
+        if (!cause.value.trim()) return invalid(msg, 'กรุณากรอกสาเหตุของปัญหา', cause);
+        if (!fix.value.trim()) return invalid(msg, 'กรุณากรอกวิธีแก้ไข', fix);
         const parts = readParts();
         const bad = parts.find(function (p) { return !p.item || !(Number(p.qty) > 0) || !(Number(p.unit_price) >= 0) || p.unit_price === ''; });
-        if (bad) return setMessage(msg, new Error('กรุณากรอกรายการ จำนวน และราคาของอะไหล่ให้ครบ'));
-        if (!photos.count()) return setMessage(msg, new Error('กรุณาแนบรูปหลังซ่อมอย่างน้อย 1 รูป'));
-        if (nobody.checked && !onsiteNote.value.trim()) return setMessage(msg, new Error('ไม่มีคนอยู่หน้างาน กรุณากรอกหมายเหตุ'));
+        if (bad) return invalid(msg, 'กรุณากรอกรายการ จำนวน และราคาของอะไหล่ให้ครบ', partsBox);
+        if (!photos.count()) return invalid(msg, 'กรุณาแนบรูปหลังซ่อมอย่างน้อย 1 รูป', photos.node);
+        if (nobody.checked && !onsiteNote.value.trim()) return invalid(msg, 'ไม่มีคนอยู่หน้างาน กรุณากรอกหมายเหตุ', onsiteNote);
         const ok = await busy(submit, msg, 'กำลังส่งรูปและบันทึก…', function () {
           return api('closeJob', {
             job_id: job.job_id, cause: cause.value, fix: fix.value, parts: parts,

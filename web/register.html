@@ -38,9 +38,9 @@
 
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
-        if (!realName.value.trim()) return setMessage(msg, new Error('กรุณากรอกชื่อจริง'));
-        if (!/^[0-9+\-\s]{6,20}$/.test(phone.value.trim())) return setMessage(msg, new Error('กรุณากรอกเบอร์โทรให้ถูกต้อง'));
-        if (!branch.value) return setMessage(msg, new Error('กรุณาเลือกร้าน'));
+        if (!realName.value.trim()) return invalid(msg, 'กรุณากรอกชื่อจริง', realName);
+        if (!/^[0-9+\-\s]{6,20}$/.test(phone.value.trim())) return invalid(msg, 'กรุณากรอกเบอร์โทรให้ถูกต้อง', phone);
+        if (!branch.value) return invalid(msg, 'กรุณาเลือกร้าน', branch);
         const result = await busy(submit, msg, 'กำลังบันทึก…', function () {
           return api('register', { real_name: realName.value, phone: phone.value, branch_code: branch.value });
         });

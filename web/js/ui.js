@@ -78,6 +78,20 @@ function setMessage(node, err, ok) {
 }
 
 /**
+ * Form validation failure: shows the message and takes the user to the field, which on a
+ * long phone form may be far above the submit button.
+ */
+function invalid(msgNode, text, input) {
+  setMessage(msgNode, new Error(text));
+  if (input) {
+    input.classList.add('invalid');
+    input.addEventListener('input', function () { input.classList.remove('invalid'); }, { once: true });
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof input.focus === 'function') input.focus({ preventScroll: true });
+  }
+}
+
+/**
  * Runs an async action with the button disabled and a busy label, showing errors in `msgNode`.
  * Resolves to the action's result, or undefined if it failed.
  */

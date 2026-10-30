@@ -79,11 +79,11 @@
         e.preventDefault();
         const areaValue = area.value === AREA_OTHER ? areaOther.value.trim() || AREA_OTHER : area.value;
         const priority = (form.querySelector('input[name=priority]:checked') || {}).value;
-        if (!branch.value) return setMessage(msg, new Error('กรุณาเลือกร้าน'));
-        if (!areaValue) return setMessage(msg, new Error('กรุณาเลือก Area'));
-        if (!category.value) return setMessage(msg, new Error('กรุณาเลือกหมวด'));
-        if (!title.value.trim()) return setMessage(msg, new Error('กรุณากรอกหัวข้อ'));
-        if (!priority) return setMessage(msg, new Error('กรุณาเลือกความเร่งด่วน'));
+        if (!branch.value) return invalid(msg, 'กรุณาเลือกร้าน', branch);
+        if (!areaValue) return invalid(msg, 'กรุณาเลือก Area', area);
+        if (!category.value) return invalid(msg, 'กรุณาเลือกหมวด', category);
+        if (!title.value.trim()) return invalid(msg, 'กรุณากรอกหัวข้อ', title);
+        if (!priority) return invalid(msg, 'กรุณาเลือกความเร่งด่วน', form.querySelector('input[name=priority]'));
 
         const result = await busy(submit, msg, photos.count() ? 'กำลังส่งรูปและบันทึก…' : 'กำลังบันทึก…', function () {
           return api('createJob', {

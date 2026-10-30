@@ -75,6 +75,7 @@ input[type=text], input[type=tel], input[type=number], select, textarea {
   border: 1px solid #d0d7de; border-radius: 8px; background: #fff; color: var(--fg);
 }
 textarea { min-height: 88px; resize: vertical; }
+.invalid { border-color: var(--err) !important; box-shadow: 0 0 0 2px rgba(209, 36, 47, 0.2); }
 .choice { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; border: 1px solid #d0d7de; border-radius: 8px; }
 .choice input { width: 20px; height: 20px; margin: 0; }
 

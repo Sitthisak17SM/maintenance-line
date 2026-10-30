@@ -107,10 +107,10 @@
         e.preventDefault();
         const data = { job_id: job.job_id, reason: reason.value };
         if (modeUser.checked) {
-          if (!user.value) return setMessage(msg, new Error('กรุณาเลือกช่าง'));
+          if (!user.value) return invalid(msg, 'กรุณาเลือกช่าง', user);
           data.assignee_id = user.value;
         } else {
-          if (!vendor.value) return setMessage(msg, new Error('กรุณาเลือกช่างนอก'));
+          if (!vendor.value) return invalid(msg, 'กรุณาเลือกช่างนอก', vendor);
           data.vendor = vendor.value;
         }
         const ok = await busy(submit, msg, 'กำลังบันทึก…', function () { return api('reassignJob', data); });
