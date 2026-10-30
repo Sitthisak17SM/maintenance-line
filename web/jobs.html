@@ -7,8 +7,95 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <!-- Placeholder: built in phase 1 (PLAN §9). -->
-  <h1>งานของฉัน</h1>
-  <p class="label">หน้านี้ยังไม่เปิดใช้งาน</p>
+  <main id="app"></main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    // Scopes per role mirror STATUS_SCOPE_ROLES on the server.
+    const SCOPES = [
+      { key: 'mine', label: 'ที่ฉันแจ้ง', roles: ['STAFF', 'MANAGER', 'TECH', 'ADMIN', 'VIEWER'] },
+      { key: 'assigned', label: 'ส่งถึงฉัน', roles: ['TECH', 'ADMIN'] },
+      { key: 'branch', label: 'ทั้งสาขา', roles: ['MANAGER'] },
+      { key: 'all', label: 'ทั้งหมด', roles: ['ADMIN', 'VIEWER'] },
+    ];
+    const FILTERS = [
+      { key: 'open', label: 'ยังไม่เสร็จ', statuses: ['NEW', 'ASSIGNED', 'REJECTED', 'ACCEPTED', 'IN_PROGRESS'] },
+      { key: 'done', label: 'รอรับทราบ', statuses: ['DONE'] },
+      { key: 'closed', label: 'ปิดแล้ว', statuses: ['CLOSED', 'CANCELLED'] },
+      { key: 'any', label: 'ทั้งหมด', statuses: [] },
+    ];
+    const state = { scope: null, filter: 'open', branch: '' };
+    let ME = null;
+
+    (async function () {
+      ME = await startPage();
+      if (!ME) return;
+      const scopes = SCOPES.filter(function (s) { return s.roles.indexOf(ME.user.role) !== -1; });
+      // Technicians mostly need what was sent to them; everyone else starts with what they reported.
+      state.scope = (scopes.find(function (s) { return s.key === (ME.user.role === 'TECH' ? 'assigned' : 'mine'); }) || scopes[0]).key;
+
+      const scopeTabs = el('div', { class: 'tabs' });
+      const filterTabs = el('div', { class: 'tabs' });
+      const branchSelect = el('select', { style: 'margin-bottom:10px' },
+        option('', 'ทุกร้าน'), ME.branches.map(function (b) { return option(b.branch_code, b.name); }));
+      const list = el('div', {});
+
+      function tabs(box, items, key) {
+        clear(box);
+        items.forEach(function (t) {
+          box.appendChild(el('button', {
+            type: 'button', class: state[key] === t.key ? 'active' : '',
+            onclick: function () { state[key] = t.key; redraw(); },
+          }, t.label));
+        });
+      }
+      function redraw() {
+        tabs(scopeTabs, scopes, 'scope');
+        tabs(filterTabs, FILTERS, 'filter');
+        branchSelect.hidden = state.scope !== 'all';
+        loadList(list);
+      }
+      branchSelect.addEventListener('change', function () { state.branch = branchSelect.value; loadList(list); });
+
+      render(
+        el('h1', {}, 'รายการงาน'),
+        scopes.length > 1 ? scopeTabs : null,
+        filterTabs, branchSelect, list,
+        el('a', { class: 'btn', href: 'report.html', style: 'margin-top:16px' }, '+ แจ้งซ่อมใหม่'));
+      redraw();
+    })();
+
+    let loadSeq = 0;
+    async function loadList(list) {
+      const seq = ++loadSeq; // ignore answers from tabs the user already left
+      clear(list).appendChild(el('div', { class: 'center' }, el('div', { class: 'spinner' })));
+      const filter = FILTERS.find(function (f) { return f.key === state.filter; });
+      try {
+        const res = await api('listJobs', { scope: state.scope, statuses: filter.statuses, branch_code: state.scope === 'all' ? state.branch : '' });
+        if (seq !== loadSeq) return;
+        clear(list);
+        if (!res.jobs.length) return list.appendChild(el('p', { class: 'center muted' }, 'ไม่มีงาน'));
+        res.jobs.forEach(function (j) { list.appendChild(item(j)); });
+        if (res.total > res.jobs.length) list.appendChild(el('p', { class: 'muted' }, 'แสดง ' + res.jobs.length + ' จาก ' + res.total + ' งานล่าสุด'));
+      } catch (err) {
+        if (seq !== loadSeq) return;
+        clear(list).appendChild(el('p', { class: 'err' }, errorText(err)));
+      }
+    }
+
+    function item(j) {
+      const who = j.vendor ? j.vendor + ' (ช่างนอก)' : j.assignee_name;
+      return el('a', { class: 'card job-item', href: 'job.html?id=' + encodeURIComponent(j.job_id) },
+        el('div', {}, el('strong', {}, j.job_id), ' ', priorityBadge(j.priority), ' ', statusBadge(j.status)),
+        el('div', { class: 'title' }, j.title),
+        el('div', { class: 'meta' },
+          nameOf(ME.branches, 'branch_code', j.branch_code, 'name') + ' · ' + (j.area || '-') + ' · ' + fmtDate(j.created_at)),
+        el('div', { class: 'meta' }, 'ผู้แจ้ง: ' + (j.reporter_name || '-') + (who ? ' · ผู้รับงาน: ' + who : '')));
+    }
+  </script>
 </body>
 </html>

@@ -3,12 +3,121 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>จัดการงาน</title>
+  <title>จ่ายงาน</title>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <!-- Placeholder: built in phase 1 (PLAN §9). -->
-  <h1>จัดการงาน</h1>
-  <p class="label">หน้านี้ยังไม่เปิดใช้งาน</p>
+  <main id="app"></main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/liff.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    // Phase 1: reassign to a technician/admin or record an outside contractor (PLAN §3 reassign).
+    // Priority changes, extensions and cancel come in phase 2.
+    let ME = null;
+    const JOB_ID = param('id');
+
+    (async function () {
+      ME = await startPage();
+      if (!ME) return;
+      if (ME.user.role !== 'ADMIN') return showError(new Error('หน้านี้สำหรับ Admin เท่านั้น'));
+      if (JOB_ID) await loadJob(); else await loadQueue();
+    })();
+
+    /** Without ?id=: jobs waiting for someone to take them. */
+    async function loadQueue() {
+      showLoading();
+      try {
+        const res = await api('listJobs', { scope: 'all', statuses: ['NEW', 'REJECTED', 'ASSIGNED'] });
+        render(
+          el('h1', {}, 'งานที่รอจ่าย'),
+          res.jobs.length ? res.jobs.map(function (j) {
+            return el('a', { class: 'card job-item', href: 'admin.html?id=' + encodeURIComponent(j.job_id) },
+              el('div', {}, el('strong', {}, j.job_id), ' ', priorityBadge(j.priority), ' ', statusBadge(j.status)),
+              el('div', { class: 'title' }, j.title),
+              el('div', { class: 'meta' }, nameOf(ME.branches, 'branch_code', j.branch_code, 'name') + ' · ' + fmtDate(j.created_at)));
+          }) : el('p', { class: 'center muted' }, 'ไม่มีงานรอจ่าย'));
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    async function loadJob() {
+      showLoading();
+      let data;
+      try {
+        data = await api('getJob', { job_id: JOB_ID });
+      } catch (err) {
+        return showError(err);
+      }
+      const job = data.job;
+      const header = [
+        el('h1', {}, 'จ่ายงาน'),
+        el('a', { class: 'card job-item', href: 'job.html?id=' + encodeURIComponent(job.job_id) },
+          el('div', {}, el('strong', {}, job.job_id), ' ', priorityBadge(job.priority), ' ', statusBadge(job.status)),
+          el('div', { class: 'title' }, job.title),
+          el('div', { class: 'meta' }, nameOf(ME.branches, 'branch_code', job.branch_code, 'name') + ' · ' + (job.area || '-') + ' · '
+            + nameOf(ME.categories, 'category_code', job.category_code, 'name_th')),
+          lastReason(data.log)),
+      ];
+      if (data.allowed_actions.indexOf('reassign') === -1) {
+        return render(header, el('p', { class: 'muted' }, 'งานสถานะ "' + (STATUS_TH[job.status] || job.status) + '" จ่ายงานใหม่ไม่ได้'),
+          el('a', { class: 'btn btn-secondary', href: 'job.html?id=' + encodeURIComponent(job.job_id) }, 'ดูรายละเอียดงาน'));
+      }
+      render(header, reassignForm(job, data.reassign_options || { users: [], vendors: [] }));
+    }
+
+    /** The latest reject/forward reason, so the admin sees why the job came back. */
+    function lastReason(log) {
+      const l = (log || []).slice().reverse().find(function (x) { return (x.action === 'reject' || x.action === 'forward') && x.reason; });
+      return l ? el('div', { class: 'meta err' }, (ACTION_TH[l.action] || l.action) + 'โดย ' + l.actor_name + ': ' + l.reason) : null;
+    }
+
+    function reassignForm(job, opts) {
+      const modeUser = el('input', { type: 'radio', name: 'mode', value: 'user', checked: true });
+      const modeVendor = el('input', { type: 'radio', name: 'mode', value: 'vendor' });
+      const user = el('select', {}, option('', '— เลือกช่าง —'),
+        opts.users.map(function (u) { return option(u.user_id, u.name + ' (' + u.role + ')'); }));
+      const vendor = el('select', {}, option('', '— เลือกช่างนอก —'),
+        opts.vendors.map(function (v) { return option(v.name, v.name); }));
+      const userField = field('ช่าง', user);
+      const vendorField = field('ช่างนอก / ผู้รับเหมา', vendor, 'Admin เป็นผู้รับงานแทน และบันทึกชื่อช่างนอกไว้ในงาน');
+      const reason = el('textarea', { maxlength: 500, placeholder: 'ไม่บังคับ' });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn' }, 'จ่ายงาน');
+
+      function sync() {
+        userField.hidden = !modeUser.checked;
+        vendorField.hidden = !modeVendor.checked;
+      }
+      [modeUser, modeVendor].forEach(function (r) { r.addEventListener('change', sync); });
+      sync();
+
+      const form = el('form', { novalidate: true },
+        el('label', { class: 'choice' }, modeUser, el('span', {}, 'ส่งให้ช่างในระบบ')),
+        el('label', { class: 'choice' }, modeVendor, el('span', {}, 'ใช้ช่างนอก')),
+        userField, vendorField,
+        field('หมายเหตุ', reason),
+        msg, submit);
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const data = { job_id: job.job_id, reason: reason.value };
+        if (modeUser.checked) {
+          if (!user.value) return setMessage(msg, new Error('กรุณาเลือกช่าง'));
+          data.assignee_id = user.value;
+        } else {
+          if (!vendor.value) return setMessage(msg, new Error('กรุณาเลือกช่างนอก'));
+          data.vendor = vendor.value;
+        }
+        const ok = await busy(submit, msg, 'กำลังบันทึก…', function () { return api('reassignJob', data); });
+        if (ok) location.replace('job.html?id=' + encodeURIComponent(job.job_id));
+      });
+      return form;
+    }
+  </script>
 </body>
 </html>
