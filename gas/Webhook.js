@@ -4,6 +4,7 @@ const WEBHOOK_DEDUP_SECONDS = 6 * 3600;
 const WEBHOOK_PAYLOAD_MAX_CHARS = 49000; // sheet cell limit is 50,000
 const WEBHOOK_ENV_CACHE_SECONDS = 600; // a Config ENV change takes up to 10 min to apply
 const WEBHOOK_TRACE_LINES = 20;
+const WEBHOOK_JOB_ID_RE = /^[A-Za-z0-9]+-\d{4}-\d{4}$/;
 
 function Webhook_handle(e) {
   const expected = (PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY') || '').trim();
@@ -60,13 +61,99 @@ function Webhook_handleEvent_(event, isTest) {
 
 function Webhook_respond_(event) {
   if (!event.source || event.source.type !== 'user') return;
+  const userId = event.source.userId;
   if (event.type === 'follow') {
-    Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('ยินดีต้อนรับสู่ระบบแจ้งซ่อม (ทดสอบ)')]));
+    Webhook_reply_(event, function () { return Flex_welcome(); });
+    Jobs_setUserActive(userId, true); // re-following reactivates a registered user
+  } else if (event.type === 'unfollow') {
+    Jobs_setUserActive(userId, false);
   } else if (event.type === 'message' && event.message.type === 'text') {
-    if (event.message.text.trim().toLowerCase() === 'ping') {
-      Webhook_traceReply_(Line_reply(event.replyToken, [Line_text('pong')]));
-    }
+    Webhook_reply_(event, function () { return Webhook_textReply_(userId, event.message.text.trim()); });
+  } else if (event.type === 'postback') {
+    Webhook_reply_(event, function () { return Webhook_postbackReply_(userId, Webhook_parseQuery_(event.postback.data)); });
   }
+}
+
+function Webhook_textReply_(userId, text) {
+  if (text.toLowerCase() === 'ping') return Line_text('pong');
+  if (WEBHOOK_JOB_ID_RE.test(text)) {
+    // Sent by liff.sendMessages after report.html submits; only the reporter gets the card.
+    const found = Repo_findJob(text);
+    if (found && String(found.job.reporter_id) === userId) return Flex_jobReceived(found.job, Jobs_ref_(found.job));
+    return Flex_help();
+  }
+  if (text === 'งานของฉัน') {
+    return Webhook_asActor_(userId, function (actor) {
+      const mine = Jobs_myOpen(actor);
+      return Flex_myJobs(mine.jobs, mine.total);
+    });
+  }
+  return Flex_help();
+}
+
+/** Postback data is a querystring: a=accept|ack|ext_ok|ext_no, j=job id (PLAN §7). */
+function Webhook_postbackReply_(userId, q) {
+  if (q.a === 'accept') {
+    return Webhook_asActor_(userId, function (actor) {
+      try {
+        return Flex_acceptResult(Jobs_accept(actor, q.j).job);
+      } catch (err) {
+        if (!err.code) throw err;
+        return Flex_acceptResult(null, err.message);
+      }
+    });
+  }
+  if (q.a === 'ack') {
+    return Webhook_asActor_(userId, function (actor) {
+      try {
+        return Flex_ackResult(Jobs_ack(actor, q.j).job);
+      } catch (err) {
+        if (!err.code) throw err;
+        return Flex_ackResult(null, err.message);
+      }
+    });
+  }
+  if (q.a === 'ext_ok' || q.a === 'ext_no') return Line_text('การอนุมัติขอเลื่อนยังไม่เปิดใช้งาน');
+  return Flex_help();
+}
+
+/** Runs fn with the registered, active actor; otherwise replies with the register card. */
+function Webhook_asActor_(userId, fn) {
+  let actor;
+  try {
+    actor = Jobs_actor(userId);
+  } catch (err) {
+    if (err.code === 'NOT_REGISTERED') return Flex_notRegistered();
+    if (err.code) return Line_text(err.message);
+    throw err;
+  }
+  return fn(actor);
+}
+
+/** Builds the reply with buildFn and sends it; an unexpected error still gets a short reply. */
+function Webhook_reply_(event, buildFn) {
+  let message;
+  try {
+    message = buildFn();
+  } catch (err) {
+    Webhook_trace_('handler failed: ' + (err.stack || err));
+    message = Line_text('ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง');
+  }
+  Webhook_traceReply_(Line_reply(event.replyToken, [message]));
+}
+
+function Webhook_parseQuery_(data) {
+  const out = {};
+  String(data || '').split('&').forEach(function (pair) {
+    const i = pair.indexOf('=');
+    if (i <= 0) return;
+    try {
+      out[decodeURIComponent(pair.slice(0, i))] = decodeURIComponent(pair.slice(i + 1).replace(/\+/g, ' '));
+    } catch (err) {
+      // ignore malformed pairs
+    }
+  });
+  return out;
 }
 
 /** Config ENV, cached so most webhook calls skip opening the sheet. */
