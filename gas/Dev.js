@@ -72,6 +72,67 @@ function Dev_slaDemo() {
   return jobId;
 }
 
+/**
+ * Phase 2A acceptance in one run (ENV=test): extension request + approval, priority change,
+ * cancel, and migration re-run. Uses the first active TECH and ADMIN in Users (they may be the
+ * same LINE account). Pushes real cards, like the LINE flow would. Logs PASS/FAIL per check.
+ */
+function Dev_phase2Check() {
+  Dev_requireTest_();
+  const users = Repo_readAll('Users').filter(Routing_isActiveUser);
+  const pick = function (role) {
+    const u = users.find(function (x) { return String(x.role || '').trim().toUpperCase() === role; });
+    if (!u) throw new Error('Need an active ' + role + ' in Users');
+    return Jobs_actorFromUser_(u);
+  };
+  const tech = pick('TECH');
+  const admin = pick('ADMIN');
+  const results = [];
+  const check = function (name, ok, detail) {
+    results.push((ok ? 'PASS ' : 'FAIL ') + name + (detail ? ' — ' + detail : ''));
+  };
+  const h = 3600 * 1000;
+
+  // 1. Extension: tech accepts, asks for +3 days, admin approves.
+  const a = Dev_smokeTest('ELEC');
+  Jobs_accept(tech, a);
+  const before = Repo_findJob(a).job;
+  const newDue = new Date(new Date(before.due_at).getTime() + 72 * h);
+  Jobs_requestExtension(tech, a, { reason: '[ทดสอบ] รออะไหล่', new_due_at: newDue.toISOString() });
+  const pending = Repo_findJob(a).job;
+  check('request_ext sets ext_pending', Routing_isTrue(pending.ext_pending), a);
+  let blocked = false;
+  try { Jobs_requestExtension(tech, a, { reason: 'x', new_due_at: new Date(newDue.getTime() + h).toISOString() }); } catch (e) { blocked = e.code === 'INVALID_STATE'; }
+  check('second request while pending is refused', blocked);
+  const decided = Jobs_decideExtension(admin, a, { approve: true, note: '[ทดสอบ] ok' });
+  const after = Repo_findJob(a).job;
+  check('approve moves due_at', new Date(after.due_at).getTime() === newDue.getTime(), Utilities.formatDate(new Date(after.due_at), 'Asia/Bangkok', 'dd/MM HH:mm'));
+  check('approve clears ext_pending and counts', decided.approved && !Routing_isTrue(after.ext_pending) && Number(after.ext_count) === 1);
+
+  // 2. Priority: NORMAL -> EMERGENCY recomputes both deadlines from created_at.
+  const b = Dev_smokeTest('ELEC');
+  Jobs_setPriority(admin, b, { priority: 'EMERGENCY', reason: '[ทดสอบ] ฉุกเฉินจริง' });
+  const pb = Repo_findJob(b).job;
+  const created = new Date(pb.created_at).getTime();
+  check('set_priority EMERGENCY: response = created + 4h', new Date(pb.response_due_at).getTime() - created === 4 * h);
+  check('set_priority EMERGENCY: due = created + 24h', new Date(pb.due_at).getTime() - created === 24 * h);
+  const logB = Repo_findAllBy('JobLog', 'job_id', b).filter(function (l) { return l.action === 'set_priority'; })[0];
+  check('JobLog keeps old and new priority', !!logB && /NORMAL/.test(logB.old_value) && /EMERGENCY/.test(logB.new_value));
+
+  // 3. Cancel.
+  const c = Dev_smokeTest('ELEC');
+  Jobs_cancel(admin, c, '[ทดสอบ] แจ้งซ้ำ');
+  check('cancel -> CANCELLED', Repo_findJob(c).job.status === 'CANCELLED', c);
+
+  // 4. Migration re-run adds nothing.
+  const mig = Setup_migrateLegacy(SETUP_LEGACY_SHEET_ID, { dryRun: true });
+  check('migration re-run adds 0 rows', mig.added === 0, mig.skipped + ' already migrated');
+
+  const failed = results.filter(function (r) { return r.indexOf('FAIL') === 0; }).length;
+  console.log('Dev_phase2Check: %s\n%s', failed ? failed + ' FAILED' : 'ALL PASS', results.join('\n'));
+  return { failed: failed, results: results };
+}
+
 /** Runs Sla_tick once by hand (same as the 15-minute trigger). */
 function Dev_slaTickNow() {
   Dev_requireTest_();
