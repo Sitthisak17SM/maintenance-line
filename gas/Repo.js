@@ -116,17 +116,25 @@ function Repo_update(name, rowIndex, changes) {
   });
 }
 
-/** Appends one row; keys of `obj` are matched to headers, unknown keys are ignored. */
+/** Appends one row; keys of `obj` are matched to headers (see Repo_appendRows). */
 function Repo_append(name, obj) {
   Repo_appendRows(name, [obj]);
 }
 
-/** Appends several rows with a single write. */
+/**
+ * Appends several rows with a single write. A key with no matching header throws, like
+ * Repo_update, so a renamed column fails loudly instead of silently dropping data.
+ */
 function Repo_appendRows(name, objs) {
   if (!objs || !objs.length) return;
   Repo_withLock(function () {
     const sheet = Repo_sheet(name);
     const headers = Repo_headersOf_(name);
+    objs.forEach(function (obj) {
+      Object.keys(obj).forEach(function (k) {
+        if (headers.indexOf(k) === -1) throw new Error('Tab ' + name + ' has no column ' + k);
+      });
+    });
     const rows = objs.map(function (obj) {
       return headers.map(function (h) {
         return Object.prototype.hasOwnProperty.call(obj, h) ? obj[h] : '';

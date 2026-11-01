@@ -164,7 +164,7 @@
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
         if (!when.value) return invalid(msg, 'กรุณาเลือกวันเสร็จใหม่', when);
-        const at = new Date(when.value); // datetime-local is the phone's local time (Bangkok)
+        const at = new Date(when.value + ':00+07:00'); // the picker shows Bangkok time whatever the phone's zone
         if (isNaN(at.getTime()) || at <= min) return invalid(msg, 'วันเสร็จใหม่ต้องอยู่หลังกำหนดเดิม', when);
         if (!reason.value.trim()) return invalid(msg, 'กรุณากรอกเหตุผล', reason);
         const ok = await busy(submit, msg, 'กำลังส่ง…', function () {
@@ -175,9 +175,12 @@
       return form;
     }
 
+    /** 'YYYY-MM-DDTHH:mm' in Asia/Bangkok for a datetime-local input (due dates are Bangkok times). */
     function toLocalInput(d) {
-      const p = function (n) { return String(n).padStart(2, '0'); };
-      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+      const p = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(d).reduce(function (acc, part) { acc[part.type] = part.value; return acc; }, {});
+      return p.year + '-' + p.month + '-' + p.day + 'T' + (p.hour === '24' ? '00' : p.hour) + ':' + p.minute;
     }
 
     function isTrue(v) {

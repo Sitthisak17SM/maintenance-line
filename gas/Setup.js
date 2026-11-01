@@ -139,7 +139,10 @@ function Setup_ensureTab_(ss, name, env) {
   const isNew = !sheet;
   if (isNew) sheet = ss.insertSheet(name);
 
-  if (sheet.getLastRow() === 0) {
+  // Seed rows only go into a tab whose headers are written right here, so their column order
+  // is ours and a tab an Admin emptied on purpose stays empty on a re-run.
+  const fresh = sheet.getLastRow() === 0;
+  if (fresh) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else {
@@ -155,8 +158,8 @@ function Setup_ensureTab_(ss, name, env) {
 
   // Config ENV follows the project (only written into a brand-new Config tab).
   const seed = name === 'Config' ? SETUP_SEED.Config.map(function (r) { return r[0] === 'ENV' ? [r[0], env, r[2]] : r; }) : SETUP_SEED[name];
-  if (seed && sheet.getLastRow() <= 1) {
-    sheet.getRange(2, 1, seed.length, seed[0].length).setValues(seed);
+  if (seed && fresh) {
+    Repo_withLock(function () { sheet.getRange(2, 1, seed.length, seed[0].length).setValues(seed); });
   }
   return isNew;
 }

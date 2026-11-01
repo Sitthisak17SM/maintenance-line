@@ -64,7 +64,12 @@ function Sla_tick() {
     Repo_withLock(function () {
       const found = Repo_findJob(jobId);
       if (!found) return;
-      const merged = Sla_addFlags(found.job.alert_flags, flags);
+      // The pushes took seconds; if an extension or priority change reset the deadlines
+      // meanwhile, only record flags that are still due on the job as it is now.
+      const still = Sla_pendingAlerts(found.job, now, config.REMIND_AT_PERCENT);
+      const keep = flags.filter(function (f) { return still.indexOf(f) !== -1; });
+      if (!keep.length) return;
+      const merged = Sla_addFlags(found.job.alert_flags, keep);
       if (merged !== String(found.job.alert_flags || '')) {
         Repo_update('Jobs', found.rowIndex, { alert_flags: merged });
         recorded++;

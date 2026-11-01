@@ -24,8 +24,15 @@ function Drive_decodePhotos(photos, maxCount) {
     }
     if (!bytes.length) throw Status_error('VALIDATION', 'รูปที่ ' + n + ': ไม่มีข้อมูลรูป');
     if (bytes.length > DRIVE_MAX_PHOTO_BYTES) throw Status_error('VALIDATION', 'รูปที่ ' + n + ': ใหญ่เกิน 2 MB');
+    // The mime label comes from the client; the file is shared by link, so check the content too.
+    if (!Drive_isJpeg(bytes)) throw Status_error('VALIDATION', 'รูปที่ ' + n + ': รองรับเฉพาะไฟล์ JPEG');
     return { mime: mime, bytes: bytes };
   });
+}
+
+/** JPEG files start with FF D8 FF. Apps Script bytes are signed (-1, -40, -1). */
+function Drive_isJpeg(bytes) {
+  return !!bytes && bytes.length >= 3 && (bytes[0] & 0xff) === 0xff && (bytes[1] & 0xff) === 0xd8 && (bytes[2] & 0xff) === 0xff;
 }
 
 /**

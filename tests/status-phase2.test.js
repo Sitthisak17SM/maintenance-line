@@ -107,6 +107,15 @@ test('decide_ext: ADMIN only, and only with a pending request', () => {
   assertCode(() => run(job('DONE', PENDING), 'decide_ext', U.admin, { approve: true }), 'INVALID_STATE');
 });
 
+// Option B (review 2 Nov 2026): a request belongs to its assignee and to the open job.
+test('reject, forward, reassign and close drop a pending extension request', () => {
+  const p = { ext_pending: true, ext_requested_due_at: LATER };
+  assert.equal(run(job('ACCEPTED', p), 'reject', U.tech1, { reason: 'ไม่ว่าง' }).fields.ext_pending, false);
+  assert.equal(run(job('ACCEPTED', p), 'forward', U.tech1, { reason: 'ต้องใช้ช่างนอก', admin_ids: ['U_ADM'] }).fields.ext_pending, false);
+  assert.equal(run(job('ACCEPTED', p), 'reassign', U.admin, { target: { userId: 'U_T2', role: 'TECH' } }).fields.ext_pending, false);
+  assert.equal(run(job('IN_PROGRESS', p), 'close', U.tech1, { photos_after: ['F1'] }).fields.ext_pending, false);
+});
+
 test('decide_ext: anything but approve === true is a rejection', () => {
   for (const approve of [undefined, 'true', 1]) {
     const r = run(job('ACCEPTED', PENDING), 'decide_ext', U.admin, { approve: approve });
@@ -189,4 +198,16 @@ test('the system actor cannot run any person action', () => {
   for (const action of ['accept', 'reject', 'forward', 'reassign', 'checkin', 'close', 'ack', 'request_ext', 'decide_ext', 'set_priority', 'cancel']) {
     for (const s of ALL) assertCode(() => run(job(s, { ext_pending: true }), action, STATUS_SYSTEM_ACTOR, { reason: 'x' }), 'FORBIDDEN');
   }
+});
+
+// PLAN §3: permission first. Callers run this before validating photos, users or SLA input.
+test('Status_assertCan: FORBIDDEN before any input is looked at', () => {
+  const { Status_assertCan } = require('../gas/core/Status.js');
+  assertCode(() => Status_assertCan(job('ACCEPTED'), 'reassign', U.tech1), 'FORBIDDEN');
+  assertCode(() => Status_assertCan(job('ACCEPTED'), 'set_priority', U.viewer), 'FORBIDDEN');
+  assertCode(() => Status_assertCan(job('IN_PROGRESS'), 'close', U.tech2), 'FORBIDDEN');
+  assertCode(() => Status_assertCan(null, 'close', U.tech1), 'NOT_FOUND');
+  assertCode(() => Status_assertCan(job('ACCEPTED'), 'nope', U.admin), 'VALIDATION');
+  // Status is not part of the permission check: a closed job still passes for an ADMIN.
+  assert.equal(typeof Status_assertCan(job('CLOSED'), 'set_priority', U.admin).who, 'function');
 });

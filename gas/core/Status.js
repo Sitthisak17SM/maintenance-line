@@ -97,15 +97,10 @@ const STATUS_RULES = {
  * input: {now: Date, ...action-specific values, see each case below}.
  */
 function Status_transition(job, action, actor, input) {
-  const rule = Object.prototype.hasOwnProperty.call(STATUS_RULES, action) ? STATUS_RULES[action] : null;
-  if (!rule) throw Status_error('VALIDATION', 'ไม่รู้จักคำสั่ง: ' + action);
-  if (!actor || !actor.userId) throw Status_error('FORBIDDEN', 'ไม่ทราบผู้ใช้');
   input = input || {};
   const now = input.now;
   if (!(now instanceof Date) || isNaN(now.getTime())) throw new Error('Status_transition: input.now must be a Date');
-
-  if (action !== 'create' && !job) throw Status_error('NOT_FOUND', 'ไม่พบงาน');
-  if (!rule.who(job, actor)) throw Status_error('FORBIDDEN', 'คุณไม่มีสิทธิ์ทำรายการนี้กับงานนี้');
+  const rule = Status_assertCan(job, action, actor);
   const from = job ? String(job.status || '') : '';
   if (rule.from && rule.from.indexOf(from) === -1) {
     throw Status_error(rule.stateError || 'INVALID_STATE', Status_stateMessage_(action, job));
@@ -130,6 +125,22 @@ function Status_transition(job, action, actor, input) {
   return r;
 }
 
+/**
+ * The permission half of Status_transition (PLAN §3: FORBIDDEN before anything else). Callers
+ * that validate expensive or revealing input (photos, user lookups, SLA) run this first.
+ * Returns the rule.
+ */
+function Status_assertCan(job, action, actor) {
+  const rule = Object.prototype.hasOwnProperty.call(STATUS_RULES, action) ? STATUS_RULES[action] : null;
+  if (!rule) throw Status_error('VALIDATION', 'ไม่รู้จักคำสั่ง: ' + action);
+  if (!actor || !actor.userId) throw Status_error('FORBIDDEN', 'ไม่ทราบผู้ใช้');
+  if (action !== 'create' && !job) throw Status_error('NOT_FOUND', 'ไม่พบงาน');
+  if (!rule.who(job, actor)) throw Status_error('FORBIDDEN', 'คุณไม่มีสิทธิ์ทำรายการนี้กับงานนี้');
+  return rule;
+}
+
+// A pending extension request belongs to the assignee who made it and to the open job, so every
+// action that removes the assignee or finishes the work drops it (PLAN §3, review 2 Nov 2026).
 const Status_apply_ = {
   // input.candidate_ids: userIds from Routing_route (empty -> NEW, nobody to send to).
   create: function (job, actor, input, now) {
@@ -159,7 +170,7 @@ const Status_apply_ = {
     return {
       status: 'REJECTED',
       reason: Status_requireText_(input.reason, 'เหตุผล', STATUS_REASON_MAX),
-      fields: { reject_count: (Number(job.reject_count) || 0) + 1, assignee_id: '', assignee_name: '' },
+      fields: { reject_count: (Number(job.reject_count) || 0) + 1, assignee_id: '', assignee_name: '', ext_pending: false },
     };
   },
 
@@ -171,7 +182,7 @@ const Status_apply_ = {
       reason: Status_requireText_(input.reason, 'เหตุผล', STATUS_REASON_MAX),
       fields: {
         route_to: 'ADMIN', candidate_ids: admins.join(','),
-        assignee_id: '', assignee_name: '', assigned_at: now,
+        assignee_id: '', assignee_name: '', assigned_at: now, ext_pending: false,
       },
     };
   },
@@ -203,7 +214,7 @@ const Status_apply_ = {
       new_value: JSON.stringify(after),
       fields: {
         route_to: routeTo, candidate_ids: candidate, vendor: vendor,
-        assignee_id: '', assignee_name: '', assigned_at: now,
+        assignee_id: '', assignee_name: '', assigned_at: now, ext_pending: false,
       },
     };
   },
@@ -229,6 +240,7 @@ const Status_apply_ = {
         done_at: now, cause: cause, fix: fix, cost_total: total,
         photos_after: photos.join(','),
         onsite_note: String(input.onsite_note || '').trim().slice(0, STATUS_TEXT_MAX),
+        ext_pending: false,
       },
     };
   },
@@ -460,7 +472,7 @@ function Status_error(code, message) {
 if (typeof module !== 'undefined') {
   module.exports = {
     STATUS, STATUS_OPEN, STATUS_ROLES, STATUS_LABEL_TH, STATUS_RULES, STATUS_PRIORITIES, STATUS_SYSTEM_ACTOR,
-    Status_transition, Status_parts, Status_canView, Status_allowedActions,
+    Status_transition, Status_assertCan, Status_parts, Status_canView, Status_allowedActions,
     Status_canListScope, Status_canViewDashboard, Status_inScope, Status_isOpen,
     Status_isReporter, Status_isAssignee, Status_isCandidate, Status_error,
   };

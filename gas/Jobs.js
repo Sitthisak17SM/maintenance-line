@@ -232,6 +232,10 @@ function Jobs_forward(actor, jobId, reason) {
 /** data: {assignee_id} for a TECH/ADMIN, or {vendor} (a name from Vendors), plus optional reason. */
 function Jobs_reassign(actor, jobId, data) {
   data = data || {};
+  // Permission before the lookups, so a non-ADMIN cannot probe which users or vendors exist.
+  const current = Repo_findJob(jobId);
+  if (!current) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
+  Status_assertCan(current.job, 'reassign', actor);
   const input = { reason: data.reason };
   const assigneeId = String(data.assignee_id || '').trim();
   const vendor = String(data.vendor || '').trim();
@@ -260,13 +264,14 @@ function Jobs_checkin(actor, jobId) {
 /** data: {cause, fix, parts[], photos[], onsite_note}. Photos are saved only after the checks pass. */
 function Jobs_close(actor, jobId, data) {
   data = data || {};
+  const current = Repo_findJob(jobId);
+  if (!current) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
+  Status_assertCan(current.job, 'close', actor); // FORBIDDEN before photo errors (PLAN §3)
   const config = Jobs_config_();
   const photos = Drive_decodePhotos(data.photos, Number(config.PHOTO_MAX_COUNT) || 4);
   const input = { cause: data.cause, fix: data.fix, parts: data.parts, onsite_note: data.onsite_note };
 
   // Dry run without the lock, so a rejected request leaves no orphan files in Drive.
-  const current = Repo_findJob(jobId);
-  if (!current) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
   Status_transition(current.job, 'close', actor, Object.assign({
     now: new Date(), photos_after: photos.map(function (p, i) { return 'pending' + i; }),
   }, input));
@@ -297,7 +302,9 @@ function Jobs_requestExtension(actor, jobId, data) {
   data = data || {};
   const r = Jobs_transition_(actor, jobId, 'request_ext', { reason: data.reason, new_due_at: data.new_due_at });
   Jobs_notify_('ext_request', r.job, function () {
-    Line_push(Routing_idsWithRole(Jobs_tab_('Users'), 'ADMIN'), [Flex_extRequest(r.job, Jobs_ref_(r.job), actor.name)]);
+    // An ADMIN holding a vendor job can ask too; never push to the person who tapped.
+    const admins = Routing_idsWithRole(Jobs_tab_('Users'), 'ADMIN').filter(function (id) { return id !== actor.userId; });
+    Line_push(admins, [Flex_extRequest(r.job, Jobs_ref_(r.job), actor.name)]);
   });
   return Jobs_result_(r.job);
 }
@@ -309,7 +316,8 @@ function Jobs_decideExtension(actor, jobId, data) {
   const r = Jobs_transition_(actor, jobId, 'decide_ext', { approve: approve, note: data.note });
   Jobs_notify_('ext_result', r.job, function () {
     const to = String(r.job.assignee_id || '').trim();
-    if (to && to !== actor.userId) Line_push(to, [Flex_extResult(r.job, approve, r.log.reason)]);
+    const active = Jobs_tab_('Users').filter(Routing_isActiveUser).some(function (u) { return Routing_userId_(u) === to; });
+    if (to && to !== actor.userId && active) Line_push(to, [Flex_extResult(r.job, approve, r.log.reason)]);
   });
   return Object.assign(Jobs_result_(r.job), { approved: approve });
 }
@@ -376,7 +384,9 @@ function Jobs_transition_(actor, jobId, action, input, progress) {
     const found = Repo_findJob(jobId);
     if (!found) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
     const now = new Date();
-    // `input` may be a function of the locked job, for inputs derived from it (set_priority).
+    // `input` may be a function of the locked job, for inputs derived from it (set_priority);
+    // check permission before running it, so its validation errors never hide FORBIDDEN.
+    if (typeof input === 'function') Status_assertCan(found.job, action, actor);
     const values = typeof input === 'function' ? input(found.job) : input;
     const t = Status_transition(found.job, action, actor, Object.assign({}, values, { now: now }));
     const job = Repo_update('Jobs', found.rowIndex, t.fields);

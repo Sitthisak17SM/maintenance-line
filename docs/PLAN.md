@@ -45,11 +45,11 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 การขอเลื่อนไม่ใช่สถานะ ใช้ flag `ext_pending = TRUE` และสถานะงานไม่เปลี่ยน
 
-**เงื่อนไขเพิ่มของเฟส 2 (`when` ใน `STATUS_RULES`):** `request_ext` ทำได้เมื่อยังไม่มีคำขอค้าง ส่วน `decide_ext` ทำได้เมื่อมีคำขอค้าง ถ้าไม่ตรงตอบ `INVALID_STATE` และปุ่มจะไม่แสดง ขอเลื่อนได้เมื่อสถานะ ACCEPTED/IN_PROGRESS และวันใหม่ต้องอยู่หลังกำหนดเดิม `cancel` ล้างคำขอเลื่อนที่ค้างด้วย `auto_ack` ทำได้เฉพาะผู้กระทำระบบ (`STATUS_SYSTEM_ACTOR`, role `SYSTEM`) ซึ่งไม่มีใน Users
+**เงื่อนไขเพิ่มของเฟส 2 (`when` ใน `STATUS_RULES`):** `request_ext` ทำได้เมื่อยังไม่มีคำขอค้าง ส่วน `decide_ext` ทำได้เมื่อมีคำขอค้าง ถ้าไม่ตรงตอบ `INVALID_STATE` และปุ่มจะไม่แสดง ขอเลื่อนได้เมื่อสถานะ ACCEPTED/IN_PROGRESS และวันใหม่ต้องอยู่หลังกำหนดเดิม คำขอเลื่อนผูกกับช่างที่ขอและงานที่ยังเปิดอยู่ จึงถูกล้าง (`ext_pending = FALSE`) อัตโนมัติเมื่อ `reject`, `forward`, `reassign`, `close` หรือ `cancel` (ตัดสินใจ 2 พ.ย. 2026 จากการรีวิว ทาง B) ช่างคนใหม่จึงไม่ได้กำหนดที่คนเก่าขอไว้ `auto_ack` ทำได้เฉพาะผู้กระทำระบบ (`STATUS_SYSTEM_ACTOR`, role `SYSTEM`) ซึ่งไม่มีใน Users
 
 ทุก action ต้องผ่าน `Status_transition(job, action, actor, input)` ใน `gas/core/Status.js` ฟังก์ชันนี้ต้องตรวจสถานะต้นทางและสิทธิ์ แล้วคืนค่าฟิลด์ที่ต้องเปลี่ยน ทุก action เขียน JobLog 1 แถว
 
-- **ลำดับการตรวจ:** ตรวจสิทธิ์ก่อน (`FORBIDDEN`) แล้วจึงตรวจสถานะ (`INVALID_STATE` ยกเว้น accept ที่ได้ `CONFLICT`)
+- **ลำดับการตรวจ:** ตรวจสิทธิ์ก่อน (`FORBIDDEN`) แล้วจึงตรวจสถานะ (`INVALID_STATE` ยกเว้น accept ที่ได้ `CONFLICT`) use-case ที่ต้องตรวจข้อมูลก่อนเข้า state machine (รูปของ closeJob, ผู้ใช้/ช่างนอกของ reassignJob, ความเร่งด่วนของ setPriority) เรียก `Status_assertCan` ก่อนเสมอ
 - **ตารางสิทธิ์อยู่ที่เดียว:** `STATUS_RULES` ใน `core/Status.js` รวมถึง `Status_canView`, `Status_allowedActions` (ปุ่มในหน้า job) และ scope ของ listJobs
 - **"candidate หรือ assignee" ของ reject/forward:** ตอน ASSIGNED คือ candidate ทุกคน พอ ACCEPTED แล้วเหลือแค่ assignee
 
@@ -64,7 +64,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause และ fix (ไม่บังคับ), แถว Parts (amount = qty × unit_price), cost_total, photos_after (อย่างน้อย 1 รูป server ตรวจด้วย), onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
 | ack | DONE | CLOSED | ผู้แจ้ง, MANAGER ของสาขานั้น, ADMIN | closed_at, ack_by, ack_at | 1 |
 | request_ext | ACCEPTED, IN_PROGRESS | (ไม่เปลี่ยน) | assignee | ext_pending = TRUE, ext_requested_due_at, ext_reason แล้ว push ext_request ให้ ADMIN | 2 |
-| decide_ext | งานที่ ext_pending = TRUE | (ไม่เปลี่ยน) | ADMIN | ext_pending = FALSE ถ้าอนุมัติ: due_at = ext_requested_due_at, ext_count + 1, ล้าง flag D75/DB แล้ว push ext_result | 2 |
+| decide_ext | ACCEPTED, IN_PROGRESS ที่ ext_pending = TRUE | (ไม่เปลี่ยน) | ADMIN | ext_pending = FALSE ถ้าอนุมัติ: due_at = ext_requested_due_at, ext_count + 1, ล้าง flag D75/DB แล้ว push ext_result | 2 |
 | set_priority | ทุกสถานะที่ยังไม่ปิด | (ไม่เปลี่ยน) | ADMIN | คำนวณ response_due_at และ due_at ใหม่จาก created_at, ล้าง alert_flags, JobLog เก็บค่าเดิมกับค่าใหม่ | 2 |
 | cancel | งานเปิด | CANCELLED | ADMIN | เหตุผล (บังคับ) | 2 |
 | auto_ack | DONE | CLOSED | ระบบ (เมื่อ AUTO_ACK_HOURS > 0) | ack_by = `AUTO` | 2 |
@@ -267,7 +267,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - action ที่เปลี่ยนสถานะ: `{job_id, status, job}`
 - ถ้ารอ lock เกิน 10 วินาทีจะได้ `CONFLICT` ให้ลองใหม่
 
-**รูปแบบรูปใน `photos`:** `[{"mime": "image/jpeg", "b64": "..."}]` ไม่เกิน `PHOTO_MAX_COUNT` รูป server รับเฉพาะ `image/jpeg` และปฏิเสธรูปที่ใหญ่เกิน 2 MB หลัง decode
+**รูปแบบรูปใน `photos`:** `[{"mime": "image/jpeg", "b64": "..."}]` ไม่เกิน `PHOTO_MAX_COUNT` รูป server รับเฉพาะ `image/jpeg` (ตรวจทั้ง mime และ byte แรกของไฟล์ต้องเป็น `FF D8 FF`) และปฏิเสธรูปที่ใหญ่เกิน 2 MB หลัง decode
 
 ## 7. LINE webhook
 
