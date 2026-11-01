@@ -65,7 +65,8 @@
         el('h1', {}, 'รายการงาน'),
         scopes.length > 1 ? scopeTabs : null,
         filterTabs, branchSelect, list,
-        el('a', { class: 'btn', href: 'report.html', style: 'margin-top:16px' }, '+ แจ้งซ่อมใหม่'));
+        el('a', { class: 'btn', href: 'report.html', style: 'margin-top:16px' }, '+ แจ้งซ่อมใหม่'),
+        ['ADMIN', 'VIEWER'].indexOf(ME.user.role) !== -1 ? el('a', { class: 'btn btn-secondary', href: 'dashboard.html' }, 'Dashboard') : null);
       redraw();
     })();
 

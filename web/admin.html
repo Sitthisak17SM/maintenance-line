@@ -45,6 +45,7 @@
         };
         render(
           el('h1', {}, 'งานที่ต้องจัดการ'),
+          el('a', { class: 'btn btn-secondary', href: 'dashboard.html' }, 'เปิด Dashboard'),
           el('h2', {}, 'คำขอเลื่อนรออนุมัติ (' + ext.length + ')'),
           ext.length ? ext.map(function (j) {
             return item(j, el('div', { class: 'meta err' }, 'ขอเลื่อนเป็น ' + fmtDate(j.ext_requested_due_at) + ' (เดิม ' + fmtDate(j.due_at) + ')'));
