@@ -7,6 +7,12 @@ const JOBS_LIST_MAX = 200;
 const JOBS_MY_OPEN_MAX = 5;
 const JOBS_PHONE_RE = /^[0-9+\-\s]{6,20}$/;
 
+// Reference tabs only people edit by hand. Each Apps Script call costs about 2 s before any sheet
+// read, so these are also kept in CacheService across calls; a sheet edit shows up within
+// JOBS_TAB_CACHE_SECONDS. Users and Jobs are never cached (roles and state must be current).
+const JOBS_CACHED_TABS = ['Branches', 'Areas', 'Categories', 'SLA', 'Vendors', 'Config'];
+const JOBS_TAB_CACHE_SECONDS = 300;
+
 let Jobs_config_cache_ = null;
 let Jobs_tab_cache_ = {};
 
@@ -499,14 +505,46 @@ function Jobs_time_(v) {
 
 /** Config tab, read once per execution. */
 function Jobs_config_() {
-  if (!Jobs_config_cache_) Jobs_config_cache_ = Repo_getConfig();
+  if (!Jobs_config_cache_) {
+    Jobs_config_cache_ = {};
+    Jobs_tab_('Config').forEach(function (r) { if (r.key) Jobs_config_cache_[String(r.key)] = r.value; });
+  }
   return Jobs_config_cache_;
 }
 
-/** Reference tab rows, read once per execution. */
+/** Tab rows, read once per execution; JOBS_CACHED_TABS also come from CacheService. */
 function Jobs_tab_(name) {
-  if (!Jobs_tab_cache_[name]) Jobs_tab_cache_[name] = Repo_readAll(name);
-  return Jobs_tab_cache_[name];
+  if (Jobs_tab_cache_[name]) return Jobs_tab_cache_[name];
+  const shared = JOBS_CACHED_TABS.indexOf(name) !== -1;
+  const key = 'tab_' + name;
+  let rows = null;
+  if (shared) {
+    try {
+      const hit = CacheService.getScriptCache().get(key);
+      if (hit) rows = JSON.parse(hit);
+    } catch (err) {
+      console.warn('Tab cache read %s failed: %s', name, err);
+    }
+  }
+  if (!rows) {
+    rows = Repo_readAll(name);
+    if (shared) {
+      try {
+        CacheService.getScriptCache().put(key, JSON.stringify(rows), JOBS_TAB_CACHE_SECONDS);
+      } catch (err) {
+        console.warn('Tab cache write %s failed: %s', name, err); // e.g. over 100 KB: just read the sheet
+      }
+    }
+  }
+  Jobs_tab_cache_[name] = rows;
+  return rows;
+}
+
+/** Drops the shared copies, so the next call reads the sheet (run from the editor after edits). */
+function Jobs_clearTabCache() {
+  CacheService.getScriptCache().removeAll(JOBS_CACHED_TABS.map(function (n) { return 'tab_' + n; }));
+  Jobs_tab_cache_ = {};
+  Jobs_config_cache_ = null;
 }
 
 function Jobs_active_(name) {

@@ -29,7 +29,7 @@ async function startPage(options) {
   try {
     const idToken = await initLiff();
     if (!idToken) return null;
-    const me = await api('me');
+    const me = await loadMe_(opts.fresh);
     if (opts.requireUser !== false && !me.user) {
       location.replace('register.html?next=' + encodeURIComponent(location.pathname.split('/').pop() + location.search));
       return null;
@@ -42,5 +42,55 @@ async function startPage(options) {
   } catch (err) {
     showError(err);
     return null;
+  }
+}
+
+// Every Apps Script call takes about 2 s, so a registered user's `me` is kept in this browser for
+// ME_CACHE_MS and reused by the next page (one call instead of two). It only shapes the UI: the
+// server checks role and permissions on every action. A cached copy older than ME_REFRESH_MS is
+// refreshed in the background for the page after this one.
+const ME_CACHE_MS = 10 * 60 * 1000;
+const ME_REFRESH_MS = 2 * 60 * 1000;
+
+function meCacheKey_() {
+  const token = liff.getDecodedIDToken();
+  return token && token.sub ? 'me:' + CONFIG.LIFF_ID + ':' + token.sub : null;
+}
+
+async function loadMe_(fresh) {
+  const key = meCacheKey_();
+  let cached = null;
+  try {
+    cached = key && !fresh ? JSON.parse(localStorage.getItem(key) || 'null') : null;
+  } catch (err) {
+    cached = null;
+  }
+  const age = cached ? Date.now() - cached.at : Infinity;
+  if (cached && cached.me && age >= 0 && age < ME_CACHE_MS) {
+    if (age > ME_REFRESH_MS) api('me').then(function (me) { saveMe_(key, me); }).catch(function () {});
+    return cached.me;
+  }
+  const me = await api('me');
+  saveMe_(key, me);
+  return me;
+}
+
+/** Only registered, active users are cached, so a new user always sees the register check. */
+function saveMe_(key, me) {
+  try {
+    if (key && me && me.user && me.user.active) localStorage.setItem(key, JSON.stringify({ at: Date.now(), me: me }));
+    else if (key) localStorage.removeItem(key);
+  } catch (err) {
+    // Storage can be blocked (private mode); the page just calls `me` every time.
+  }
+}
+
+/** After the user's own data changes (register), so the next page reads it fresh. */
+function forgetMe() {
+  try {
+    const key = meCacheKey_();
+    if (key) localStorage.removeItem(key);
+  } catch (err) {
+    // nothing cached
   }
 }

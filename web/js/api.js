@@ -22,6 +22,10 @@ async function api(action, data) {
   } catch (err) {
     throw new ApiError('INTERNAL', 'เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง (HTTP ' + res.status + ')');
   }
-  if (!json.ok) throw new ApiError(json.error.code, json.error.message);
+  if (!json.ok) {
+    // A cached `me` (liff.js) is wrong once the server no longer knows this user.
+    if (json.error.code === 'NOT_REGISTERED' && typeof forgetMe === 'function') forgetMe();
+    throw new ApiError(json.error.code, json.error.message);
+  }
   return json.data;
 }

@@ -233,6 +233,12 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 3. cache ผลไว้ 10 นาทีใน CacheService โดยใช้ SHA-256 ของ token เป็น key
 4. ถ้า token หมดอายุ ให้ตอบ `AUTH` แล้วให้หน้าเว็บ reload เพื่อขอ token ใหม่
 
+**ความเร็ว (วัด 2 พ.ย. 2026: Apps Script ใช้ราว 1.5–2.3 วินาทีต่อครั้งแม้แค่ `ping`)**
+
+- **แคชฝั่ง server:** แท็บ Branches, Areas, Categories, SLA, Vendors และ Config เก็บใน CacheService 5 นาที (`JOBS_TAB_CACHE_SECONDS`) แก้ชีตแล้วมีผลภายใน 5 นาที หรือรัน `Jobs_clearTabCache` ใน editor ให้มีผลทันที ส่วน Users และ Jobs อ่านจากชีตทุกครั้ง
+- **แคชฝั่งหน้าเว็บ:** ผล `me` ของผู้ใช้ที่ลงทะเบียนแล้วเก็บใน localStorage 10 นาที หน้าถัดไปจึงเรียก API แค่ครั้งเดียว และถ้าแคชอายุเกิน 2 นาทีจะดึงใหม่เบื้องหลัง เปลี่ยน role ในชีตแล้วปุ่มบนหน้าเว็บอาจยังเป็นแบบเดิมได้ถึง 10 นาที แต่ server ตรวจสิทธิ์จริงทุกครั้ง หน้า register อ่านใหม่เสมอและล้างแคชหลังบันทึก
+- ทุกหน้า preconnect ไปที่ `script.google.com`, `script.googleusercontent.com` และ `api.line.me`
+
 | action | data | สิทธิ์ | เฟส |
 |---|---|---|---|
 | ping | — | ไม่ต้องมี token | 0 |
