@@ -89,7 +89,7 @@ for (const m of MATRIX) {
 }
 
 test('unknown action is rejected', () => {
-  assertCode(() => Status_transition(job('ASSIGNED'), 'request_ext', U.tech1, { now: NOW }), 'VALIDATION');
+  assertCode(() => Status_transition(job('ASSIGNED'), 'fly', U.tech1, { now: NOW }), 'VALIDATION');
   assertCode(() => Status_transition(job('ASSIGNED'), 'toString', U.tech1, { now: NOW }), 'VALIDATION');
 });
 
@@ -373,10 +373,14 @@ test('Status_canView follows PLAN §6 getJob', () => {
 
 test('Status_allowedActions lists the buttons for each actor', () => {
   assert.deepEqual(Status_allowedActions(job('ASSIGNED'), U.tech1), ['accept', 'reject', 'forward']);
-  assert.deepEqual(Status_allowedActions(job('ASSIGNED'), U.admin), ['accept', 'reassign']);
-  assert.deepEqual(Status_allowedActions(job('ACCEPTED'), U.tech1), ['reject', 'forward', 'checkin', 'close']);
+  assert.deepEqual(Status_allowedActions(job('ASSIGNED'), U.admin), ['accept', 'reassign', 'set_priority', 'cancel']);
+  assert.deepEqual(Status_allowedActions(job('ACCEPTED'), U.tech1), ['reject', 'forward', 'checkin', 'close', 'request_ext']);
+  assert.deepEqual(Status_allowedActions(job('ACCEPTED', { ext_pending: 'TRUE' }), U.tech1), ['reject', 'forward', 'checkin', 'close']);
+  assert.deepEqual(Status_allowedActions(job('IN_PROGRESS', { ext_pending: true }), U.admin),
+    ['close', 'decide_ext', 'set_priority', 'cancel']);
   assert.deepEqual(Status_allowedActions(job('ACCEPTED'), U.tech2), []);
   assert.deepEqual(Status_allowedActions(job('DONE'), U.reporter), ['ack']);
+  assert.deepEqual(Status_allowedActions(job('DONE'), U.admin), ['ack', 'set_priority']);
   assert.deepEqual(Status_allowedActions(job('CLOSED'), U.admin), []);
   assert.deepEqual(Status_allowedActions(job('DONE'), U.viewer), []);
 });

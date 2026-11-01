@@ -14,6 +14,10 @@ const STATUS_LABEL_TH = {
 const STATUS_REASON_MAX = 500;
 const STATUS_TEXT_MAX = 2000;
 const STATUS_PARTS_MAX = 30;
+const STATUS_PRIORITIES = ['EMERGENCY', 'URGENT', 'NORMAL', 'PREVENTIVE'];
+// Sla_tick acts as this role (auto_ack); no Users row can have it because it is not in STATUS_ROLES.
+const STATUS_SYSTEM_ROLE = 'SYSTEM';
+const STATUS_SYSTEM_ACTOR = { userId: 'AUTO', name: 'ระบบ', role: 'SYSTEM', branch_code: '' };
 
 // Who may run each phase-1 action, and from which statuses (PLAN §3 table).
 // `stateError` is the code returned when the status is wrong: a late "accept" is a CONFLICT
@@ -55,6 +59,32 @@ const STATUS_RULES = {
         (a.role === 'MANAGER' && Status_sameBranch_(job, a));
     },
   },
+
+  // --- phase 2 (PLAN §3). These keep the status; `when` is an extra precondition on the job
+  // (checked after `from`, reported as INVALID_STATE) and also hides the action in allowedActions.
+  request_ext: {
+    from: ['ACCEPTED', 'IN_PROGRESS'],
+    who: function (job, a) { return Status_isAssignee(job, a); },
+    when: function (job) { return Status_isTrue_(job.ext_pending) ? 'งานนี้มีคำขอเลื่อนที่รออนุมัติอยู่แล้ว' : ''; },
+  },
+  decide_ext: {
+    from: ['ACCEPTED', 'IN_PROGRESS'],
+    who: function (job, a) { return a.role === 'ADMIN'; },
+    when: function (job) { return Status_isTrue_(job.ext_pending) ? '' : 'งานนี้ไม่มีคำขอเลื่อนที่รออนุมัติ'; },
+  },
+  set_priority: {
+    from: ['NEW', 'ASSIGNED', 'REJECTED', 'ACCEPTED', 'IN_PROGRESS', 'DONE'],
+    who: function (job, a) { return a.role === 'ADMIN'; },
+  },
+  cancel: {
+    from: STATUS_OPEN,
+    who: function (job, a) { return a.role === 'ADMIN'; },
+  },
+  // Run by Sla_tick with the system actor, never by a person.
+  auto_ack: {
+    from: ['DONE'],
+    who: function (job, a) { return a.role === STATUS_SYSTEM_ROLE; },
+  },
 };
 
 /**
@@ -80,6 +110,8 @@ function Status_transition(job, action, actor, input) {
   if (rule.from && rule.from.indexOf(from) === -1) {
     throw Status_error(rule.stateError || 'INVALID_STATE', Status_stateMessage_(action, job));
   }
+  const blocked = rule.when ? rule.when(job) : '';
+  if (blocked) throw Status_error('INVALID_STATE', blocked);
 
   const r = Status_apply_[action](job, actor, input, now);
   r.fields.status = r.status;
@@ -204,6 +236,74 @@ const Status_apply_ = {
   ack: function (job, actor, input, now) {
     return { status: 'CLOSED', fields: { closed_at: now, ack_by: actor.userId, ack_at: now } };
   },
+
+  // input.reason (required), input.new_due_at (Date after now and after the current due_at).
+  request_ext: function (job, actor, input, now) {
+    const reason = Status_requireText_(input.reason, 'เหตุผล', STATUS_REASON_MAX);
+    const newDue = Status_date_(input.new_due_at);
+    if (!newDue) throw Status_error('VALIDATION', 'กรุณาเลือกวันเสร็จใหม่');
+    if (newDue.getTime() <= now.getTime()) throw Status_error('VALIDATION', 'วันเสร็จใหม่ต้องอยู่หลังเวลาปัจจุบัน');
+    const due = Status_date_(job.due_at);
+    if (due && newDue.getTime() <= due.getTime()) throw Status_error('VALIDATION', 'วันเสร็จใหม่ต้องอยู่หลังกำหนดเดิม');
+    return {
+      status: job.status,
+      reason: reason,
+      old_value: Status_iso_(due),
+      new_value: newDue.toISOString(),
+      fields: { ext_pending: true, ext_requested_due_at: newDue, ext_reason: reason },
+    };
+  },
+
+  // input.approve (boolean), input.note (optional). Approval moves due_at and clears D75/DB.
+  decide_ext: function (job, actor, input, now) {
+    const approve = input.approve === true;
+    const requested = Status_date_(job.ext_requested_due_at);
+    if (approve && !requested) throw Status_error('VALIDATION', 'คำขอเลื่อนไม่มีวันที่ใหม่');
+    const fields = { ext_pending: false };
+    if (approve) {
+      fields.due_at = requested;
+      fields.ext_count = (Number(job.ext_count) || 0) + 1;
+      fields.alert_flags = Status_flags_(job.alert_flags).filter(function (f) { return f !== 'D75' && f !== 'DB'; }).join(',');
+    }
+    return {
+      status: job.status,
+      reason: String(input.note || '').trim().slice(0, STATUS_REASON_MAX),
+      old_value: Status_iso_(Status_date_(job.due_at)),
+      new_value: approve ? requested.toISOString() : 'ไม่อนุมัติ',
+      fields: fields,
+      approved: approve,
+    };
+  },
+
+  // input.priority, input.due {response_due_at, due_at} computed from created_at by the caller
+  // (Sla_computeDueDates), input.reason (optional). Clears every alert flag.
+  set_priority: function (job, actor, input, now) {
+    const priority = String(input.priority || '').trim().toUpperCase();
+    if (STATUS_PRIORITIES.indexOf(priority) === -1) throw Status_error('VALIDATION', 'กรุณาเลือกความเร่งด่วน');
+    if (priority === String(job.priority || '')) throw Status_error('VALIDATION', 'ความเร่งด่วนเหมือนเดิม');
+    const due = input.due || {};
+    if (!Status_date_(due.response_due_at) || !Status_date_(due.due_at)) throw new Error('set_priority: input.due is required');
+    return {
+      status: job.status,
+      reason: String(input.reason || '').trim().slice(0, STATUS_REASON_MAX),
+      old_value: JSON.stringify({ priority: job.priority, response_due_at: Status_iso_(Status_date_(job.response_due_at)), due_at: Status_iso_(Status_date_(job.due_at)) }),
+      new_value: JSON.stringify({ priority: priority, response_due_at: Status_iso_(due.response_due_at), due_at: Status_iso_(due.due_at) }),
+      fields: { priority: priority, response_due_at: due.response_due_at, due_at: due.due_at, alert_flags: '' },
+    };
+  },
+
+  // input.reason (required). A pending extension request is dropped with the job.
+  cancel: function (job, actor, input, now) {
+    return {
+      status: 'CANCELLED',
+      reason: Status_requireText_(input.reason, 'เหตุผล', STATUS_REASON_MAX),
+      fields: { ext_pending: false },
+    };
+  },
+
+  auto_ack: function (job, actor, input, now) {
+    return { status: 'CLOSED', fields: { closed_at: now, ack_by: 'AUTO', ack_at: now } };
+  },
 };
 
 /** Normalizes closeJob parts: drops blank rows, validates numbers, computes amount = qty × unit_price. */
@@ -244,7 +344,8 @@ function Status_allowedActions(job, actor) {
   if (!job || !actor || !actor.userId) return [];
   return Object.keys(STATUS_RULES).filter(function (action) {
     const rule = STATUS_RULES[action];
-    return action !== 'create' && rule.from.indexOf(String(job.status)) !== -1 && rule.who(job, actor);
+    return action !== 'create' && action !== 'auto_ack' && rule.from.indexOf(String(job.status)) !== -1 &&
+      rule.who(job, actor) && !(rule.when && rule.when(job));
   });
 }
 
@@ -302,6 +403,26 @@ function Status_sameBranch_(job, a) {
 }
 
 /** Accepts "U1,U2", ["U1", "U2"] or empty; returns trimmed, non-empty ids. */
+/** Sheet booleans arrive as true/false or as text ("TRUE"). */
+function Status_isTrue_(value) {
+  return value === true || /^(true|1|yes)$/i.test(String(value === undefined || value === null ? '' : value).trim());
+}
+
+/** A valid Date from a Date or a date string, else null. */
+function Status_date_(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function Status_iso_(date) {
+  return date ? date.toISOString() : '';
+}
+
+function Status_flags_(value) {
+  return String(value === undefined || value === null ? '' : value).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
 function Status_ids_(value) {
   const list = Array.isArray(value) ? value : String(value === undefined || value === null ? '' : value).split(',');
   return list.map(function (s) { return String(s).trim(); }).filter(Boolean);
@@ -333,7 +454,7 @@ function Status_error(code, message) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    STATUS, STATUS_OPEN, STATUS_ROLES, STATUS_LABEL_TH, STATUS_RULES,
+    STATUS, STATUS_OPEN, STATUS_ROLES, STATUS_LABEL_TH, STATUS_RULES, STATUS_PRIORITIES, STATUS_SYSTEM_ACTOR,
     Status_transition, Status_parts, Status_canView, Status_allowedActions,
     Status_canListScope, Status_inScope, Status_isOpen,
     Status_isReporter, Status_isAssignee, Status_isCandidate, Status_error,
