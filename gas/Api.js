@@ -60,6 +60,9 @@ const API_ACTIONS = {
   cancelJob: function (req) {
     return Jobs_cancel(Api_actor_(req), Api_jobId_(req), req.data.reason);
   },
+  dashboard: function (req) {
+    return Jobs_dashboard(Api_actor_(req), req.data);
+  },
 };
 
 /** Registered, active user behind the request's ID token. */

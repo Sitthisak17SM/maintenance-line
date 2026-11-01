@@ -334,6 +334,34 @@ function Jobs_setPriority(actor, jobId, data) {
   return Jobs_result_(r.job);
 }
 
+/**
+ * action=dashboard (PLAN §13): data {from, to (YYYY-MM-DD, Bangkok days), branch_code,
+ * category_code, tech}. Aggregates only, computed by Kpi_compute.
+ */
+function Jobs_dashboard(actor, data) {
+  if (!Status_canViewDashboard(actor)) throw Status_error('FORBIDDEN', 'Dashboard สำหรับ Admin และผู้บริหารเท่านั้น');
+  data = data || {};
+  const from = Jobs_bangkokDay_(data.from, 'วันเริ่มต้น');
+  const to = Jobs_bangkokDay_(data.to, 'วันสิ้นสุด');
+  if (from && to && from > to) throw Status_error('VALIDATION', 'วันเริ่มต้นต้องไม่อยู่หลังวันสิ้นสุด');
+  return Kpi_compute(Repo_readAll('Jobs'), {
+    now: new Date(), from: from, to: to,
+    branch_code: String(data.branch_code || '').trim(),
+    category_code: String(data.category_code || '').trim(),
+    tech: String(data.tech || '').trim(),
+  });
+}
+
+/** 'YYYY-MM-DD' -> that day's midnight in Asia/Bangkok; blank -> null. */
+function Jobs_bangkokDay_(value, label) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw Status_error('VALIDATION', label + 'ไม่ถูกต้อง');
+  const d = new Date(s + 'T00:00:00+07:00');
+  if (isNaN(d.getTime())) throw Status_error('VALIDATION', label + 'ไม่ถูกต้อง');
+  return d;
+}
+
 function Jobs_cancel(actor, jobId, reason) {
   return Jobs_result_(Jobs_transition_(actor, jobId, 'cancel', { reason: reason }).job);
 }

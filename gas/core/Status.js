@@ -358,6 +358,11 @@ const STATUS_SCOPE_ROLES = {
   all: ['ADMIN', 'VIEWER'],
 };
 
+/** PLAN §13: the dashboard is for ADMIN and VIEWER only. */
+function Status_canViewDashboard(actor) {
+  return !!actor && (actor.role === 'ADMIN' || actor.role === 'VIEWER');
+}
+
 function Status_canListScope(scope, actor) {
   const roles = Object.prototype.hasOwnProperty.call(STATUS_SCOPE_ROLES, scope) ? STATUS_SCOPE_ROLES[scope] : null;
   return !!(roles && actor && roles.indexOf(actor.role) !== -1);
@@ -456,7 +461,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     STATUS, STATUS_OPEN, STATUS_ROLES, STATUS_LABEL_TH, STATUS_RULES, STATUS_PRIORITIES, STATUS_SYSTEM_ACTOR,
     Status_transition, Status_parts, Status_canView, Status_allowedActions,
-    Status_canListScope, Status_inScope, Status_isOpen,
+    Status_canListScope, Status_canViewDashboard, Status_inScope, Status_isOpen,
     Status_isReporter, Status_isAssignee, Status_isCandidate, Status_error,
   };
 }
