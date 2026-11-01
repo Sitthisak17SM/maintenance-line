@@ -92,6 +92,8 @@ function Dev_phase2Check() {
     results.push((ok ? 'PASS ' : 'FAIL ') + name + (detail ? ' — ' + detail : ''));
   };
   const h = 3600 * 1000;
+  // The sheet may round stored times, so compare within a second.
+  const near = function (v, ms) { return Math.abs(new Date(v).getTime() - ms) < 1000; };
 
   // 1. Extension: tech accepts, asks for +3 days, admin approves.
   const a = Dev_smokeTest('ELEC');
@@ -106,7 +108,7 @@ function Dev_phase2Check() {
   check('second request while pending is refused', blocked);
   const decided = Jobs_decideExtension(admin, a, { approve: true, note: '[ทดสอบ] ok' });
   const after = Repo_findJob(a).job;
-  check('approve moves due_at', new Date(after.due_at).getTime() === newDue.getTime(), Utilities.formatDate(new Date(after.due_at), 'Asia/Bangkok', 'dd/MM HH:mm'));
+  check('approve moves due_at', near(after.due_at, newDue.getTime()), Utilities.formatDate(new Date(after.due_at), 'Asia/Bangkok', 'dd/MM HH:mm'));
   check('approve clears ext_pending and counts', decided.approved && !Routing_isTrue(after.ext_pending) && Number(after.ext_count) === 1);
 
   // 2. Priority: NORMAL -> EMERGENCY recomputes both deadlines from created_at.
@@ -114,8 +116,8 @@ function Dev_phase2Check() {
   Jobs_setPriority(admin, b, { priority: 'EMERGENCY', reason: '[ทดสอบ] ฉุกเฉินจริง' });
   const pb = Repo_findJob(b).job;
   const created = new Date(pb.created_at).getTime();
-  check('set_priority EMERGENCY: response = created + 4h', new Date(pb.response_due_at).getTime() - created === 4 * h);
-  check('set_priority EMERGENCY: due = created + 24h', new Date(pb.due_at).getTime() - created === 24 * h);
+  check('set_priority EMERGENCY: response = created + 4h', near(pb.response_due_at, created + 4 * h));
+  check('set_priority EMERGENCY: due = created + 24h', near(pb.due_at, created + 24 * h));
   const logB = Repo_findAllBy('JobLog', 'job_id', b).filter(function (l) { return l.action === 'set_priority'; })[0];
   check('JobLog keeps old and new priority', !!logB && /NORMAL/.test(logB.old_value) && /EMERGENCY/.test(logB.new_value));
 
