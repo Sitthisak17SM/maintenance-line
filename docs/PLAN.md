@@ -45,6 +45,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 การขอเลื่อนไม่ใช่สถานะ ใช้ flag `ext_pending = TRUE` และสถานะงานไม่เปลี่ยน
 
+**เงื่อนไขเพิ่มของเฟส 2 (`when` ใน `STATUS_RULES`):** `request_ext` ทำได้เมื่อยังไม่มีคำขอค้าง ส่วน `decide_ext` ทำได้เมื่อมีคำขอค้าง ถ้าไม่ตรงตอบ `INVALID_STATE` และปุ่มจะไม่แสดง ขอเลื่อนได้เมื่อสถานะ ACCEPTED/IN_PROGRESS และวันใหม่ต้องอยู่หลังกำหนดเดิม `cancel` ล้างคำขอเลื่อนที่ค้างด้วย `auto_ack` ทำได้เฉพาะผู้กระทำระบบ (`STATUS_SYSTEM_ACTOR`, role `SYSTEM`) ซึ่งไม่มีใน Users
+
 ทุก action ต้องผ่าน `Status_transition(job, action, actor, input)` ใน `gas/core/Status.js` ฟังก์ชันนี้ต้องตรวจสถานะต้นทางและสิทธิ์ แล้วคืนค่าฟิลด์ที่ต้องเปลี่ยน ทุก action เขียน JobLog 1 แถว
 
 - **ลำดับการตรวจ:** ตรวจสิทธิ์ก่อน (`FORBIDDEN`) แล้วจึงตรวจสถานะ (`INVALID_STATE` ยกเว้น accept ที่ได้ `CONFLICT`)
@@ -441,7 +443,10 @@ job.route_to = category.route_to; job.candidate_ids = candidates
   - **DB:** เกิน due_at แล้ว เตือน ADMIN
 - **ปิดอัตโนมัติ:** งานสถานะ DONE ที่ AUTO_ACK_HOURS > 0 และเลยเวลาแล้ว ให้ทำ auto_ack
 - **Flag:** ต่อท้ายใน `alert_flags` เพื่อไม่ให้เตือนซ้ำ set_priority ล้างทุก flag ส่วนการขอเลื่อนที่อนุมัติล้าง D75 และ DB
-- **การรวมข้อความ:** รวมทุกงานของผู้รับคนเดียวกันในรอบเดียวเป็น push เดียว (carousel)
+- **การรวมข้อความ:** รวมทุกงานของผู้รับคนเดียวกันในรอบเดียวเป็น push เดียว (carousel ละไม่เกิน 12 งาน สูงสุด 5 ข้อความต่อ push เกินจากนั้นสรุปเป็น "และอีก N งาน")
+- **บันทึก flag:** เขียน flag เมื่อ push ถึงผู้รับอย่างน้อย 1 คน หรือเมื่อไม่มีผู้รับเลย ถ้า LINE ล่มรอบถัดไปจะเตือนซ้ำ
+- **งานที่ไม่มีวันที่:** (เช่นงานที่ย้ายมาจากไฟล์เดิม) ไม่เตือน
+- **ติดตั้ง:** รัน `Triggers_install()` ใน editor 1 ครั้งต่อ environment ทดสอบเร็วได้ด้วย `Dev_slaDemo()` (ENV=test)
 
 **ฟังก์ชันล้วนที่ต้องมีเทสต์**
 
@@ -513,7 +518,15 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 - ไม่ส่งแจ้งเตือน
 - รันซ้ำได้โดยข้ามแถวที่เคยย้ายแล้ว (ร้าน + หัวข้อ + วันที่ตรงกัน)
 - รูปที่ฝังในเซลล์ไม่ต้องย้าย
-- จำนวนที่ควรได้ทั้งหมด 171 แถว
+- จำนวนที่ควรได้ทั้งหมด 171 แถว (ตรวจกับไฟล์จริงแล้ว 1 พ.ย. 2026: 171 แถว key ไม่ซ้ำ 171)
+
+**สิ่งที่ทำจริง (1 พ.ย. 2026)**
+
+- **แหล่งข้อมูล:** ไฟล์ .xlsx เดิมมีรูปฝัง (7 MB) จึงทำสำเนาแบบค่าอย่างเดียวของ 7 แท็บเป็น Google Sheet "Maintenance List (สำเนาสำหรับย้ายข้อมูล ห้ามแก้)" (`SETUP_LEGACY_SHEET_ID` ใน `Setup.js`) ไฟล์ต้นฉบับไม่ถูกแตะ และห้าม commit ไฟล์ .xlsx (repo เป็น public)
+- **การแมป:** อยู่ใน `gas/core/Migrate.js` (มีเทสต์) วันที่ในไฟล์เป็นเลข serial ของ Excel แปลงเป็นเที่ยงคืนเวลาไทย ช่างนอกในคอลัมน์ Technician จับจากข้อความ เช่น "ช่างเซอร์วิส\n66 kitchen" → vendor `66 Kitchen`
+- **job_id:** `LG-{BRANCH}-{NNN}` เรียงตามลำดับในไฟล์ แยกจากเลข `MT-` เพื่อไม่ให้กินตัวนับรายเดือน
+- **กำหนดเวลา:** ไม่ใส่ `response_due_at`/`due_at` งานเก่าจึงไม่ถูกเตือน SLA และไม่นับใน KPI ที่อิงกำหนดเวลา
+- **วิธีรัน:** `Setup_migrateLegacyDryRun()` ดูผลก่อน แล้ว `Setup_migrateLegacyRun()` รันซ้ำได้ แถวที่มีอยู่แล้วจะถูกข้าม
 
 ## 15. โครงสร้าง repo
 
@@ -538,12 +551,12 @@ maintenance-line/
 │   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
 │   ├── Dev.js           Dev_smokeTest, Dev_testFlexImage (ทำงานเฉพาะ ENV=test)
 │   └── core/            pure logic, Node-testable
-│       ├── Status.js  Sla.js  Routing.js  JobId.js  Kpi.js
+│       ├── Status.js  Sla.js  Routing.js  JobId.js  Migrate.js  Kpi.js
 ├── web/
 │   ├── index.html  ping.html  register.html  report.html  job.html  jobs.html  admin.html  dashboard.html
 │   ├── js/              config.js (LIFF_ID, API_URL), liff.js, api.js, image.js, ui.js
 │   └── css/app.css
-├── tests/               status.test.js, sla.test.js, routing.test.js, jobid.test.js
+├── tests/               status.test.js, status-phase2.test.js, sla.test.js, routing.test.js, jobid.test.js, migrate.test.js
 └── .github/workflows/   deploy-web.yml, deploy-gas.yml
 ```
 
