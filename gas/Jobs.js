@@ -438,6 +438,7 @@ function Jobs_summary_(j) {
     category_code: j.category_code, title: j.title, priority: j.priority, status: j.status,
     reporter_name: j.reporter_name, assignee_name: j.assignee_name, vendor: j.vendor,
     response_due_at: j.response_due_at, due_at: j.due_at, done_at: j.done_at,
+    ext_pending: Routing_isTrue(j.ext_pending), ext_requested_due_at: j.ext_requested_due_at,
   };
 }
 

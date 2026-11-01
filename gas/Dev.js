@@ -49,8 +49,8 @@ function Dev_smokeTestKitchen() {
 }
 
 /**
- * Phase 2 SLA check without waiting: creates an ELEC job, moves its dates into the past so
- * both the response deadline (RB) and 75% of the repair window are passed, then runs Sla_tick.
+ * Phase 2 SLA check without waiting: creates an ELEC job and moves its dates into the past so
+ * 75% of the response window and the response deadline are both passed, then runs Sla_tick.
  * Expect one alert carousel per person (TECH: R75, ADMIN: RB), and none on a second run.
  */
 function Dev_slaDemo() {

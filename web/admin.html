@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>จ่ายงาน</title>
+  <title>จัดการงาน</title>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -31,15 +31,26 @@
     async function loadQueue() {
       showLoading();
       try {
-        const res = await api('listJobs', { scope: 'all', statuses: ['NEW', 'REJECTED', 'ASSIGNED'] });
+        const [waiting, working] = await Promise.all([
+          api('listJobs', { scope: 'all', statuses: ['NEW', 'REJECTED', 'ASSIGNED'] }),
+          api('listJobs', { scope: 'all', statuses: ['ACCEPTED', 'IN_PROGRESS'] }),
+        ]);
+        const ext = working.jobs.filter(function (j) { return j.ext_pending; });
+        const item = function (j, extra) {
+          return el('a', { class: 'card job-item', href: 'admin.html?id=' + encodeURIComponent(j.job_id) },
+            el('div', {}, el('strong', {}, j.job_id), ' ', priorityBadge(j.priority), ' ', statusBadge(j.status)),
+            el('div', { class: 'title' }, j.title),
+            el('div', { class: 'meta' }, nameOf(ME.branches, 'branch_code', j.branch_code, 'name') + ' · ' + fmtDate(j.created_at)),
+            extra || null);
+        };
         render(
-          el('h1', {}, 'งานที่รอจ่าย'),
-          res.jobs.length ? res.jobs.map(function (j) {
-            return el('a', { class: 'card job-item', href: 'admin.html?id=' + encodeURIComponent(j.job_id) },
-              el('div', {}, el('strong', {}, j.job_id), ' ', priorityBadge(j.priority), ' ', statusBadge(j.status)),
-              el('div', { class: 'title' }, j.title),
-              el('div', { class: 'meta' }, nameOf(ME.branches, 'branch_code', j.branch_code, 'name') + ' · ' + fmtDate(j.created_at)));
-          }) : el('p', { class: 'center muted' }, 'ไม่มีงานรอจ่าย'));
+          el('h1', {}, 'งานที่ต้องจัดการ'),
+          el('h2', {}, 'คำขอเลื่อนรออนุมัติ (' + ext.length + ')'),
+          ext.length ? ext.map(function (j) {
+            return item(j, el('div', { class: 'meta err' }, 'ขอเลื่อนเป็น ' + fmtDate(j.ext_requested_due_at) + ' (เดิม ' + fmtDate(j.due_at) + ')'));
+          }) : el('p', { class: 'muted' }, 'ไม่มี'),
+          el('h2', {}, 'งานที่รอจ่าย (' + waiting.jobs.length + ')'),
+          waiting.jobs.length ? waiting.jobs.map(function (j) { return item(j); }) : el('p', { class: 'muted' }, 'ไม่มีงานรอจ่าย'));
       } catch (err) {
         showError(err);
       }
@@ -55,7 +66,7 @@
       }
       const job = data.job;
       const header = [
-        el('h1', {}, 'จ่ายงาน'),
+        el('h1', {}, 'จัดการงาน'),
         el('a', { class: 'card job-item', href: 'job.html?id=' + encodeURIComponent(job.job_id) },
           el('div', {}, el('strong', {}, job.job_id), ' ', priorityBadge(job.priority), ' ', statusBadge(job.status)),
           el('div', { class: 'title' }, job.title),
@@ -63,11 +74,85 @@
             + nameOf(ME.categories, 'category_code', job.category_code, 'name_th')),
           lastReason(data.log)),
       ];
-      if (data.allowed_actions.indexOf('reassign') === -1) {
-        return render(header, el('p', { class: 'muted' }, 'งานสถานะ "' + (STATUS_TH[job.status] || job.status) + '" จ่ายงานใหม่ไม่ได้'),
+      const can = function (a) { return data.allowed_actions.indexOf(a) !== -1; };
+      const sections = [
+        can('decide_ext') ? section('คำขอเลื่อนกำหนด', extDecision(job)) : null,
+        can('reassign') ? section('จ่ายงาน / เลือกช่างนอก', reassignForm(job, data.reassign_options || { users: [], vendors: [] })) : null,
+        can('set_priority') ? section('แก้ความเร่งด่วน', priorityForm(job)) : null,
+        can('cancel') ? section('ยกเลิกงาน', cancelForm(job)) : null,
+      ].filter(Boolean);
+      if (!sections.length) {
+        return render(header, el('p', { class: 'muted' }, 'งานสถานะ "' + (STATUS_TH[job.status] || job.status) + '" ไม่มีรายการให้จัดการ'),
           el('a', { class: 'btn btn-secondary', href: 'job.html?id=' + encodeURIComponent(job.job_id) }, 'ดูรายละเอียดงาน'));
       }
-      render(header, reassignForm(job, data.reassign_options || { users: [], vendors: [] }));
+      render(header, sections);
+    }
+
+    function section(title, body) {
+      return el('div', { class: 'panel' }, el('h2', {}, title), body);
+    }
+
+    function backToJob(job) {
+      location.replace('job.html?id=' + encodeURIComponent(job.job_id));
+    }
+
+    /** Approve or reject a pending extension (also possible from the chat card). */
+    function extDecision(job) {
+      const note = el('textarea', { maxlength: 500, placeholder: 'ไม่บังคับ' });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const yes = el('button', { type: 'button', class: 'btn' }, 'อนุมัติ');
+      const no = el('button', { type: 'button', class: 'btn btn-danger' }, 'ไม่อนุมัติ');
+      async function decide(button, approve) {
+        const ok = await busy(button, msg, 'กำลังบันทึก…', function () {
+          return api('decideExtension', { job_id: job.job_id, approve: approve, note: note.value });
+        });
+        if (ok) backToJob(job);
+      }
+      yes.addEventListener('click', function () { decide(yes, true); });
+      no.addEventListener('click', function () { decide(no, false); });
+      const kv = function (k, v) { return el('div', { class: 'row' }, el('span', { class: 'k' }, k), el('span', { class: 'v' }, v)); };
+      return el('div', { class: 'card' },
+        kv('กำหนดเดิม', fmtDate(job.due_at)),
+        kv('ขอเลื่อนเป็น', el('strong', {}, fmtDate(job.ext_requested_due_at))),
+        kv('เหตุผล', job.ext_reason || '-'),
+        field('หมายเหตุถึงช่าง', note), msg, el('div', { class: 'btn-row' }, yes, no));
+    }
+
+    /** R10: due dates are recomputed from created_at on the server. */
+    function priorityForm(job) {
+      const select = el('select', {}, ME.sla.map(function (s) { return option(s.priority, s.label_th || s.priority, s.priority === job.priority); }));
+      const reason = el('textarea', { maxlength: 500, placeholder: 'เช่น ไม่ได้ฉุกเฉินจริง' });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn' }, 'บันทึกความเร่งด่วน');
+      const form = el('form', { novalidate: true },
+        el('p', { class: 'muted' }, 'ผู้แจ้งเลือก ' + (job.priority_reported || '-') + ' · ตอนนี้ ' + (job.priority || '-') + ' · ระบบจะคำนวณกำหนดเวลาใหม่จากเวลาแจ้ง'),
+        field('ความเร่งด่วน', select), field('เหตุผล', reason), msg, submit);
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (select.value === job.priority) return invalid(msg, 'ความเร่งด่วนเหมือนเดิม', select);
+        const ok = await busy(submit, msg, 'กำลังบันทึก…', function () {
+          return api('setPriority', { job_id: job.job_id, priority: select.value, reason: reason.value });
+        });
+        if (ok) backToJob(job);
+      });
+      return form;
+    }
+
+    function cancelForm(job) {
+      const reason = el('textarea', { maxlength: 500, placeholder: 'เช่น แจ้งซ้ำกับงานอื่น' });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn btn-danger' }, 'ยืนยันยกเลิกงาน');
+      const form = el('form', { novalidate: true }, field('เหตุผลที่ยกเลิก', reason), msg, submit);
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (!reason.value.trim()) return invalid(msg, 'กรุณากรอกเหตุผล', reason);
+        if (!confirm('ยกเลิกงาน ' + job.job_id + ' ใช่ไหม? ย้อนกลับไม่ได้')) return;
+        const ok = await busy(submit, msg, 'กำลังบันทึก…', function () {
+          return api('cancelJob', { job_id: job.job_id, reason: reason.value });
+        });
+        if (ok) backToJob(job);
+      });
+      return form;
     }
 
     /** The latest reject/forward reason, so the admin sees why the job came back. */

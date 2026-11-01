@@ -60,7 +60,9 @@
           job.accepted_at ? row('รับงาน', fmtDate(job.accepted_at)) : null,
           job.checkin_at ? row('ถึงหน้างาน', fmtDate(job.checkin_at)) : null,
           job.done_at ? row('ซ่อมเสร็จ', fmtDate(job.done_at)) : null,
-          job.closed_at ? row('รับทราบ', fmtDate(job.closed_at)) : null),
+          job.closed_at ? row('รับทราบ', fmtDate(job.closed_at)) : null,
+          isTrue(job.ext_pending) ? row('ขอเลื่อนเป็น', el('span', { class: 'err' }, fmtDate(job.ext_requested_due_at) + ' (รออนุมัติ)')) : null,
+          Number(job.ext_count) ? row('เลื่อนกำหนดแล้ว', job.ext_count + ' ครั้ง') : null),
         photoSection('รูปก่อนซ่อม', data.photos_before_urls),
         resultSection(job, data.parts),
         photoSection('รูปหลังซ่อม', data.photos_after_urls),
@@ -137,10 +139,49 @@
       simple('ack', 'ackJob', 'รับทราบงาน');
       toggle('reject', 'ปฏิเสธงาน', function () { return reasonForm(job, 'rejectJob', 'เหตุผลที่ปฏิเสธ', 'ยืนยันปฏิเสธ', 'btn-danger'); });
       toggle('forward', 'ส่งต่อช่างนอก', function () { return reasonForm(job, 'forwardJob', 'เหตุผลที่ต้องใช้ช่างนอก', 'ยืนยันส่งต่อให้ Admin'); });
-      if (can('reassign')) buttons.push(el('a', { class: 'btn btn-secondary', href: 'admin.html?id=' + encodeURIComponent(job.job_id) }, 'จ่ายงาน / เลือกช่างนอก'));
+      toggle('request_ext', 'ขอเลื่อนกำหนดเสร็จ', function () { return extForm(job); });
+      if (['reassign', 'decide_ext', 'set_priority', 'cancel'].some(can)) {
+        buttons.push(el('a', { class: 'btn btn-secondary', href: 'admin.html?id=' + encodeURIComponent(job.job_id) },
+          can('decide_ext') ? 'พิจารณาคำขอเลื่อน / จัดการงาน' : 'จัดการงาน (จ่ายงาน ความเร่งด่วน ยกเลิก)'));
+      }
 
       if (!buttons.length) return null;
       return el('div', { class: 'panel' }, el('h2', {}, 'ดำเนินการ'), buttons, msg, formSlot);
+    }
+
+    /** Request a later due date (PLAN §3 request_ext): reason + new date/time, approved by an Admin. */
+    function extForm(job) {
+      const reason = el('textarea', { maxlength: 500, placeholder: 'เช่น รออะไหล่จากร้าน' });
+      const min = new Date(Math.max(Date.now(), new Date(job.due_at).getTime() || 0) + 3600 * 1000);
+      const when = el('input', { type: 'datetime-local', min: toLocalInput(min), value: toLocalInput(new Date(min.getTime() + 24 * 3600 * 1000)) });
+      const msg = el('p', { class: 'msg', hidden: true });
+      const submit = el('button', { type: 'submit', class: 'btn' }, 'ส่งคำขอเลื่อน');
+      const form = el('form', { class: 'card', novalidate: true },
+        el('p', { class: 'muted', style: 'margin-top:0' }, 'กำหนดเสร็จเดิม ' + fmtDate(job.due_at) + ' · Admin จะได้แจ้งเตือนเพื่ออนุมัติ'),
+        field('วันและเวลาเสร็จใหม่', when),
+        field('เหตุผล', reason),
+        msg, submit);
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (!when.value) return invalid(msg, 'กรุณาเลือกวันเสร็จใหม่', when);
+        const at = new Date(when.value); // datetime-local is the phone's local time (Bangkok)
+        if (isNaN(at.getTime()) || at <= min) return invalid(msg, 'วันเสร็จใหม่ต้องอยู่หลังกำหนดเดิม', when);
+        if (!reason.value.trim()) return invalid(msg, 'กรุณากรอกเหตุผล', reason);
+        const ok = await busy(submit, msg, 'กำลังส่ง…', function () {
+          return api('requestExtension', { job_id: job.job_id, reason: reason.value, new_due_at: at.toISOString() });
+        });
+        if (ok) load();
+      });
+      return form;
+    }
+
+    function toLocalInput(d) {
+      const p = function (n) { return String(n).padStart(2, '0'); };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    function isTrue(v) {
+      return v === true || /^(true|1)$/i.test(String(v || ''));
     }
 
     function reasonForm(job, apiAction, label, submitLabel, cls) {
