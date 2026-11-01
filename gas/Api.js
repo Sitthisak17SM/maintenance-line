@@ -47,6 +47,19 @@ const API_ACTIONS = {
   ackJob: function (req) {
     return Jobs_ack(Api_actor_(req), Api_jobId_(req));
   },
+  // --- phase 2 ---
+  requestExtension: function (req) {
+    return Jobs_requestExtension(Api_actor_(req), Api_jobId_(req), req.data);
+  },
+  decideExtension: function (req) {
+    return Jobs_decideExtension(Api_actor_(req), Api_jobId_(req), req.data);
+  },
+  setPriority: function (req) {
+    return Jobs_setPriority(Api_actor_(req), Api_jobId_(req), req.data);
+  },
+  cancelJob: function (req) {
+    return Jobs_cancel(Api_actor_(req), Api_jobId_(req), req.data.reason);
+  },
 };
 
 /** Registered, active user behind the request's ID token. */

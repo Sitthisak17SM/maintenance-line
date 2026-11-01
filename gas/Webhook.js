@@ -113,7 +113,17 @@ function Webhook_postbackReply_(userId, q) {
       }
     });
   }
-  if (q.a === 'ext_ok' || q.a === 'ext_no') return Line_text('การอนุมัติขอเลื่อนยังไม่เปิดใช้งาน');
+  if (q.a === 'ext_ok' || q.a === 'ext_no') {
+    return Webhook_asActor_(userId, function (actor) {
+      try {
+        const r = Jobs_decideExtension(actor, q.j, { approve: q.a === 'ext_ok' });
+        return Flex_extDecisionResult(r.job, r.approved);
+      } catch (err) {
+        if (!err.code) throw err;
+        return Flex_extDecisionResult(null, false, err.message);
+      }
+    });
+  }
   return Flex_help();
 }
 

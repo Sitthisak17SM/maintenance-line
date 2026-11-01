@@ -290,6 +290,54 @@ function Jobs_ack(actor, jobId) {
   return Jobs_result_(Jobs_transition_(actor, jobId, 'ack', {}).job);
 }
 
+// --- phase 2 (PLAN §3, §8) ------------------------------------------------------------
+
+/** data: {reason, new_due_at (ISO string)}. Pushes ext_request to every active ADMIN. */
+function Jobs_requestExtension(actor, jobId, data) {
+  data = data || {};
+  const r = Jobs_transition_(actor, jobId, 'request_ext', { reason: data.reason, new_due_at: data.new_due_at });
+  Jobs_notify_('ext_request', r.job, function () {
+    Line_push(Routing_idsWithRole(Jobs_tab_('Users'), 'ADMIN'), [Flex_extRequest(r.job, Jobs_ref_(r.job), actor.name)]);
+  });
+  return Jobs_result_(r.job);
+}
+
+/** data: {approve: true|false, note}. Pushes ext_result to the assignee (unless they decided it themselves). */
+function Jobs_decideExtension(actor, jobId, data) {
+  data = data || {};
+  const approve = data.approve === true || data.approve === 'true';
+  const r = Jobs_transition_(actor, jobId, 'decide_ext', { approve: approve, note: data.note });
+  Jobs_notify_('ext_result', r.job, function () {
+    const to = String(r.job.assignee_id || '').trim();
+    if (to && to !== actor.userId) Line_push(to, [Flex_extResult(r.job, approve, r.log.reason)]);
+  });
+  return Object.assign(Jobs_result_(r.job), { approved: approve });
+}
+
+/**
+ * data: {priority, reason}. Due dates are recomputed from created_at with the SLA tab, read
+ * from the job as it is under the lock (PLAN §3 set_priority).
+ */
+function Jobs_setPriority(actor, jobId, data) {
+  data = data || {};
+  const priority = String(data.priority || '').trim().toUpperCase();
+  const r = Jobs_transition_(actor, jobId, 'set_priority', function (job) {
+    let due = null;
+    try {
+      due = Sla_computeDueDates(job.created_at instanceof Date ? job.created_at : new Date(job.created_at), priority, Jobs_tab_('SLA'));
+    } catch (err) {
+      if (/createdAt/.test(err.message)) throw Status_error('VALIDATION', 'งานนี้ไม่มีวันที่แจ้ง จึงคำนวณกำหนดเวลาใหม่ไม่ได้');
+      throw Status_error('VALIDATION', 'กรุณาเลือกความเร่งด่วน');
+    }
+    return { priority: priority, due: due, reason: data.reason };
+  });
+  return Jobs_result_(r.job);
+}
+
+function Jobs_cancel(actor, jobId, reason) {
+  return Jobs_result_(Jobs_transition_(actor, jobId, 'cancel', { reason: reason }).job);
+}
+
 /**
  * Re-reads the job under the lock, applies the transition, writes Jobs + JobLog (+ Parts).
  * `progress.jobWritten` (optional) turns true once the Jobs row is updated; Apps Script has no
@@ -300,7 +348,9 @@ function Jobs_transition_(actor, jobId, action, input, progress) {
     const found = Repo_findJob(jobId);
     if (!found) throw Status_error('NOT_FOUND', 'ไม่พบงาน ' + (jobId || ''));
     const now = new Date();
-    const t = Status_transition(found.job, action, actor, Object.assign({}, input, { now: now }));
+    // `input` may be a function of the locked job, for inputs derived from it (set_priority).
+    const values = typeof input === 'function' ? input(found.job) : input;
+    const t = Status_transition(found.job, action, actor, Object.assign({}, values, { now: now }));
     const job = Repo_update('Jobs', found.rowIndex, t.fields);
     if (progress) progress.jobWritten = true;
     Repo_appendJobLog(job.job_id, actor, t.log, now);

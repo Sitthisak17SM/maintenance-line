@@ -49,6 +49,36 @@ function Dev_smokeTestKitchen() {
 }
 
 /**
+ * Phase 2 SLA check without waiting: creates an ELEC job, moves its dates into the past so
+ * both the response deadline (RB) and 75% of the repair window are passed, then runs Sla_tick.
+ * Expect one alert carousel per person (TECH: R75, ADMIN: RB), and none on a second run.
+ */
+function Dev_slaDemo() {
+  Dev_requireTest_();
+  const jobId = Dev_smokeTest('ELEC');
+  const h = 3600 * 1000;
+  const now = Date.now();
+  Repo_withLock(function () {
+    const found = Repo_findJob(jobId);
+    Repo_update('Jobs', found.rowIndex, {
+      created_at: new Date(now - 80 * h),
+      response_due_at: new Date(now - 8 * h),
+      due_at: new Date(now + 88 * h),
+    });
+  });
+  const first = Sla_tick();
+  const second = Sla_tick();
+  console.log('%s: first tick %s, second tick %s (second must flag 0 jobs)', jobId, JSON.stringify(first), JSON.stringify(second));
+  return jobId;
+}
+
+/** Runs Sla_tick once by hand (same as the 15-minute trigger). */
+function Dev_slaTickNow() {
+  Dev_requireTest_();
+  return Sla_tick();
+}
+
+/**
  * PLAN §18: pushes one carousel to the first active ADMIN with the latest job photo in two
  * URL forms (direct googleusercontent and Drive thumbnail) to see which one LINE shows.
  */

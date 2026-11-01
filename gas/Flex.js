@@ -136,6 +136,100 @@ function Flex_ackResult(job, errorMessage) {
   return Line_text('รับทราบงาน ' + job.job_id + ' แล้ว ปิดงานเรียบร้อย');
 }
 
+/** Push to ADMINs: a technician asks for a later due date (PLAN §8 ext_request). */
+function Flex_extRequest(job, ref, byName) {
+  const id = String(job.job_id);
+  return Flex_message_('ขอเลื่อนกำหนดงาน ' + id + ' เป็น ' + Flex_date(job.ext_requested_due_at), {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('ช่างขอเลื่อนกำหนดเสร็จ', { weight: 'bold', size: 'lg', color: '#E65100' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_separator_(),
+      Flex_text_('กำหนดเดิม: ' + Flex_date(job.due_at), { size: 'sm' }),
+      Flex_text_('ขอเลื่อนเป็น: ' + Flex_date(job.ext_requested_due_at), { size: 'sm', weight: 'bold' }),
+      Flex_text_('เหตุผล: ' + job.ext_reason, { size: 'sm' }),
+      Flex_text_('โดย: ' + (byName || job.assignee_name || '-'), { size: 'xs', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([
+      Flex_postbackButton_('อนุมัติ', 'a=ext_ok&j=' + id, 'อนุมัติขอเลื่อน ' + id, true),
+      Flex_postbackButton_('ไม่อนุมัติ', 'a=ext_no&j=' + id, 'ไม่อนุมัติขอเลื่อน ' + id, false),
+      Flex_uriButton_('ดูงาน', Flex_liffUrl('admin.html', { id: id })),
+    ]),
+  });
+}
+
+/** Push to the assignee with the decision (PLAN §8 ext_result). */
+function Flex_extResult(job, approved, note) {
+  const id = String(job.job_id);
+  return Flex_message_((approved ? 'อนุมัติ' : 'ไม่อนุมัติ') + 'ขอเลื่อนงาน ' + id, {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_(approved ? 'อนุมัติขอเลื่อนแล้ว' : 'ไม่อนุมัติขอเลื่อน', { weight: 'bold', size: 'lg', color: approved ? '#2E7D32' : '#D32F2F' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_('กำหนดเสร็จ: ' + Flex_date(job.due_at), { size: 'sm', weight: 'bold' }),
+      note ? Flex_text_('หมายเหตุ: ' + note, { size: 'sm' }) : null,
+    ]),
+    footer: Flex_box_([Flex_uriButton_('เปิดงาน', Flex_liffUrl('job.html', { id: id }), true)]),
+  });
+}
+
+const FLEX_SLA_LABEL = {
+  R75: { text: 'ใกล้ครบเวลาเข้าหน้างาน', color: '#F57C00', field: 'response_due_at' },
+  RB: { text: 'เลยเวลาเข้าหน้างานแล้ว', color: '#D32F2F', field: 'response_due_at' },
+  D75: { text: 'ใกล้ครบกำหนดเสร็จ', color: '#F57C00', field: 'due_at' },
+  DB: { text: 'เลยกำหนดเสร็จแล้ว', color: '#D32F2F', field: 'due_at' },
+};
+const FLEX_CAROUSEL_MAX = 12; // LINE limit per carousel
+const FLEX_MESSAGES_MAX = 5;  // LINE limit per push
+
+/**
+ * sla_alert for one recipient: items [{job, flags[]}] -> up to 5 carousel messages (one push,
+ * counted once against the quota). Items beyond 60 are summarised in the last bubble.
+ */
+function Flex_slaAlerts(items) {
+  const cap = FLEX_CAROUSEL_MAX * FLEX_MESSAGES_MAX;
+  const shown = items.slice(0, items.length > cap ? cap - 1 : cap);
+  const bubbles = shown.map(function (it) {
+    const job = it.job;
+    const id = String(job.job_id);
+    return {
+      type: 'bubble', size: 'kilo',
+      body: Flex_box_([Flex_idRow_(job), Flex_text_(job.title, { weight: 'bold', size: 'sm' })].concat(
+        it.flags.map(function (f) {
+          const l = FLEX_SLA_LABEL[f];
+          return Flex_text_(l.text + ' (' + Flex_date(job[l.field]) + ')', { size: 'xs', weight: 'bold', color: l.color });
+        }))),
+      footer: Flex_box_([Flex_uriButton_('เปิดงาน', Flex_liffUrl('job.html', { id: id }), true)]),
+    };
+  });
+  if (items.length > shown.length) {
+    bubbles.push({
+      type: 'bubble', size: 'kilo',
+      body: Flex_box_([Flex_text_('และอีก ' + (items.length - shown.length) + ' งาน', { weight: 'bold' })]),
+      footer: Flex_box_([Flex_uriButton_('ดูทั้งหมด', Flex_liffUrl('jobs.html'), true)]),
+    });
+  }
+  const messages = [];
+  for (let i = 0; i < bubbles.length; i += FLEX_CAROUSEL_MAX) {
+    messages.push({
+      type: 'flex',
+      altText: Flex_truncate_('แจ้งเตือนเวลางานซ่อม ' + items.length + ' งาน', FLEX_ALT_MAX),
+      contents: { type: 'carousel', contents: bubbles.slice(i, i + FLEX_CAROUSEL_MAX) },
+    });
+  }
+  return messages;
+}
+
+/** Reply to whoever tapped อนุมัติ/ไม่อนุมัติ. */
+function Flex_extDecisionResult(job, approved, errorMessage) {
+  if (errorMessage) return Line_text(errorMessage);
+  return Line_text((approved ? 'อนุมัติขอเลื่อน ' : 'ไม่อนุมัติขอเลื่อน ') + job.job_id +
+    ' แล้ว กำหนดเสร็จ ' + Flex_date(job.due_at));
+}
+
 /** Reply to "งานของฉัน": up to 5 open jobs, each row opens the job page. */
 function Flex_myJobs(jobs, total) {
   if (!jobs.length) return Line_text('ไม่มีงานที่ยังเปิดอยู่');
