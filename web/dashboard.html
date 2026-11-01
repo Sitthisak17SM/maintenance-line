@@ -4,48 +4,140 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="css/app.css">
   <style>
-    /* Chart roles (dataviz reference palette, validated: 7 slots light). Text stays in ink tokens. */
-    .viz-root {
-      --surface-1: #ffffff;
-      --text-primary: #1f2328;
-      --text-secondary: #59636e;
-      --grid: #eef0f3;
-      --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
-      --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6;
-      --critical: #d03b3b;
+    /* Paper Plane Project tones: paper white, ink black, forest green and terracotta from the rooms.
+       Status series validated with the dataviz checker (CVD + normal-vision floor pass on white);
+       amber is below 3:1 so every chart carries direct value labels and a table view. */
+    .dash {
+      --paper: #ffffff;
+      --panel: #ffffff;
+      --line: #e4e1dc;
+      --ink: #161513;
+      --ink-2: #5d574e;
+      --forest: #1f5a43;
+      --forest-tint: #e3ece6;
+      --money: #9c5326;
+      --critical: #b42318;
+      --s-open: #d0623a; --s-done: #d9a441; --s-closed: #138a5e; --s-cancelled: #8a5cb0;
+      max-width: 1120px;
+      padding: 20px 16px 48px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Anuphan", system-ui, "Noto Sans Thai", sans-serif;
+      font-variant-numeric: tabular-nums;
+      accent-color: var(--forest);
     }
-    body.wide { max-width: 1100px; }
-    .filters { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+    html { background: #ffffff; }
+    .dash ::selection { background: var(--forest); color: #fff; }
+    .dash :focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+    .dash a { color: var(--forest); text-underline-offset: 3px; }
+    .dash .muted { color: var(--ink-2); }
+
+    .top h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; margin: 0; }
+    .top .scope { margin: 4px 0 16px; color: var(--ink-2); font-size: 0.95rem; }
+
+    /* Filters ---------------------------------------------------------------- */
+    .seg { display: flex; padding: 3px; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; }
+    .seg button { flex: 1; background: transparent; color: var(--ink); padding: 8px 6px; font-weight: 500; border-radius: 9px; min-height: 40px; }
+    .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+    .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .filters .field { margin: 0; }
-    .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-    .quick button { background: #e6e9ee; color: var(--fg); padding: 6px 12px; font-size: 0.9rem; }
-    .quick button.active { background: #06c755; color: #fff; }
-    .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 8px; }
-    .tile { background: var(--card); border-radius: 8px; padding: 12px; }
-    .tile .n { font-size: 1.6rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
-    .tile .n.alert { color: var(--critical); }
-    .tile .l { color: var(--muted); font-size: 0.85rem; }
-    .charts { display: grid; grid-template-columns: 1fr; gap: 12px; }
-    .chart { background: var(--card); border-radius: 8px; padding: 12px; }
-    .chart h2 { margin: 0 0 4px; }
-    .chart .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
-    .chart .canvas { position: relative; height: 260px; }
-    .chart details { margin-top: 6px; font-size: 0.85rem; }
-    table.data { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-    table.data th, table.data td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eef0f3; }
-    table.data td.num, table.data th.num { text-align: right; }
+    .filters .field .label { font-size: 0.8rem; font-weight: 500; color: var(--ink-2); margin-bottom: 2px; }
+    .filters .f-tech { grid-column: 1 / -1; }
+    .dash select, .dash input[type=date] {
+      width: 100%; font: inherit; min-height: 44px; padding: 8px 12px; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    }
+    details.custom { margin-top: 8px; }
+    details.custom summary { cursor: pointer; color: var(--forest); font-weight: 500; font-size: 0.9rem; padding: 6px 0; }
+    details.custom .dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+
+    #app.loading .body { opacity: 0.45; pointer-events: none; transition: opacity 0.2s; }
+
+    /* Now band --------------------------------------------------------------- */
+    .now { margin-top: 24px; background: var(--ink); color: #fff; border-radius: 16px; padding: 18px 18px 16px; }
+    .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .sec-head h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .sec-head .note { font-size: 0.8rem; color: var(--ink-2); }
+    .now .sec-head .note { color: #c9c3b8; }
+    .figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .fig .n { font-size: 2rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; display: flex; align-items: center; gap: 6px; }
+    .fig .l { font-size: 0.85rem; color: #d8d2c7; margin-top: 2px; }
+    .fig.alert .n { color: #ff9b85; }
+    .fig .n .ico { width: 22px; height: 22px; }
+    .now .fig + .fig { border-left: 1px solid #3a3833; padding-left: 12px; }
+
+    /* Period panel ----------------------------------------------------------- */
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin: 12px 0 0; }
+    .period-figs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .period-figs .n { font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
+    .period-figs .l { font-size: 0.85rem; color: var(--ink-2); }
+    .kpis { display: grid; grid-template-columns: 1fr; gap: 14px; padding-top: 14px; }
+    .kpi-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .kpi-name { font-weight: 600; }
+    .kpi-val { font-size: 1.25rem; font-weight: 700; }
+    .meter { height: 8px; background: var(--forest-tint); border-radius: 99px; overflow: hidden; margin: 6px 0 4px; }
+    .meter i { display: block; height: 100%; background: var(--forest); border-radius: 99px; }
+    .meter.warn { background: #f6e3da; }
+    .meter.warn i { background: var(--s-open); }
+    .kpi-note { margin: 0; font-size: 0.8rem; color: var(--ink-2); }
+
+    /* Charts ----------------------------------------------------------------- */
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+    .grid .panel { margin: 0; min-width: 0; }
+    .panel h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .panel .sub { color: var(--ink-2); font-size: 0.85rem; margin: 2px 0 12px; }
+    .canvas { position: relative; height: 240px; }
+    .panel details { margin-top: 10px; font-size: 0.9rem; }
+    .panel details summary { cursor: pointer; color: var(--forest); font-weight: 500; }
+    .empty { display: flex; align-items: center; gap: 8px; color: var(--ink-2); padding: 12px 0; }
+    .empty.good { color: var(--forest); font-weight: 500; }
+    .empty .ico { width: 20px; height: 20px; }
+    .ico { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+    table.data { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    table.data th { text-align: left; font-weight: 500; font-size: 0.8rem; color: var(--ink-2); padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    table.data td { text-align: left; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    table.data tr:last-child td { border-bottom: 0; }
+    table.data .num { text-align: right; white-space: nowrap; }
+    table.data td.late { color: var(--critical); font-weight: 600; }
     .scroll { overflow-x: auto; }
+    /* Long lists read as one block per job on phones instead of a cramped 5-column table. */
+    @media (max-width: 759px) {
+      table.stack thead { display: none; }
+      table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; }
+      table.stack tr { display: flex; flex-wrap: wrap; column-gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+      table.stack tr:last-child { border-bottom: 0; }
+      table.stack td { border: 0; padding: 1px 0; font-size: 0.85rem; color: var(--ink-2); text-align: left; }
+      table.stack td:first-child { flex-basis: 100%; font-size: 0.95rem; font-weight: 500; }
+      table.stack td[data-label]::before { content: attr(data-label) " "; }
+      table.stack td.late { color: var(--critical); margin-left: auto; }
+    }
+
     @media (min-width: 760px) {
-      .filters { grid-template-columns: repeat(4, 1fr); }
-      .tiles { grid-template-columns: repeat(4, 1fr); }
-      .charts { grid-template-columns: 1fr 1fr; }
-      .chart.full { grid-column: 1 / -1; }
+      .dash { padding-top: 32px; }
+      .controls { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 12px; align-items: end; }
+      .seg { margin-bottom: 0; }
+      .filters { grid-template-columns: repeat(3, 1fr); }
+      .filters .f-tech { grid-column: auto; }
+      .overview { display: grid; grid-template-columns: 1fr 1.25fr; gap: 12px; margin-top: 24px; }
+      .overview .now, .overview .panel { margin: 0; }
+      .overview .now { display: flex; flex-direction: column; }
+      .now .figs { grid-template-columns: 1fr; gap: 0; flex: 1; align-content: space-between; }
+      .now .fig { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 0; }
+      .now .fig + .fig { border-left: 0; padding-left: 0; border-top: 1px solid #3a3833; }
+      .now .fig .n { font-size: 2.5rem; order: 2; }
+      .now .fig .l { font-size: 0.95rem; margin: 0; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      .grid .full { grid-column: 1 / -1; }
     }
   </style>
 </head>
-<body class="wide viz-root">
+<body class="dash">
   <main id="app"></main>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -55,19 +147,21 @@
   <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
   <script>
-    // PLAN §13. Colour follows the entity (fixed slot per branch / category / status group),
-    // never its rank, so filtering never repaints the survivors.
-    const SERIES = [1, 2, 3, 4, 5, 6, 7].map(function (i) { return 'var(--series-' + i + ')'; });
+    // PLAN §13. Each chart answers one question. Colour follows the entity (fixed per status
+    // group), never its rank, so filtering never repaints the survivors.
     const STATUS_GROUPS = [
-      { key: 'open', label: 'ยังไม่เสร็จ', statuses: ['NEW', 'ASSIGNED', 'REJECTED', 'ACCEPTED', 'IN_PROGRESS'] },
-      { key: 'done', label: 'รอรับทราบ', statuses: ['DONE'] },
-      { key: 'closed', label: 'ปิดแล้ว', statuses: ['CLOSED'] },
-      { key: 'cancelled', label: 'ยกเลิก', statuses: ['CANCELLED'] },
+      { key: 'open', label: 'ยังไม่เสร็จ', color: '--s-open', statuses: ['NEW', 'ASSIGNED', 'REJECTED', 'ACCEPTED', 'IN_PROGRESS'] },
+      { key: 'done', label: 'รอรับทราบ', color: '--s-done', statuses: ['DONE'] },
+      { key: 'closed', label: 'ปิดแล้ว', color: '--s-closed', statuses: ['CLOSED'] },
+      { key: 'cancelled', label: 'ยกเลิก', color: '--s-cancelled', statuses: ['CANCELLED'] },
     ];
     const RANGES = [{ days: 30, label: '30 วัน' }, { days: 90, label: '90 วัน' }, { days: 365, label: '1 ปี' }, { days: 0, label: 'ทั้งหมด' }];
+    const FONT = '"Anuphan", system-ui, "Noto Sans Thai", sans-serif';
+    const ICONS = { alert: 'M12 4 2.5 20h19L12 4Zm0 6v4.5m0 3v.01', check: 'M20 6 9 17l-5-5' };
     let ME = null;
     let charts = [];
-    const state = { days: 90, from: '', to: '', branch_code: '', category_code: '', tech: '' };
+    let loaded = false;
+    const state = { days: 90, from: '', to: '', branch_code: '', category_code: '', tech: '', techs: [] };
 
     (async function () {
       ME = await startPage();
@@ -79,17 +173,24 @@
           el('a', { class: 'btn', href: 'jobs.html' }, 'กลับไปหน้ารายการงาน')));
       }
       setRange(90);
+      await Promise.race([document.fonts.ready, new Promise(function (r) { setTimeout(r, 1500); })]);
+      Chart.defaults.font.family = FONT;
+      Chart.defaults.font.size = 12;
+      Chart.defaults.animation = matchMedia('(prefers-reduced-motion: reduce)').matches ? false : { duration: 500, easing: 'easeOutQuart' };
+      Chart.defaults.color = cssVar('--ink-2');
+      Object.assign(Chart.defaults.plugins.tooltip, {
+        backgroundColor: cssVar('--ink'), padding: 10, cornerRadius: 8, boxPadding: 4,
+        titleFont: { family: FONT, weight: '600' }, bodyFont: { family: FONT },
+      });
       await load();
     })();
 
     function cssVar(name) {
-      const m = /var\((--[^)]+)\)/.exec(name);
-      return m ? getComputedStyle(document.body).getPropertyValue(m[1]).trim() : name;
+      return getComputedStyle(document.body).getPropertyValue(name).trim();
     }
 
     function ymd(d) {
-      const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-      return p; // en-CA gives YYYY-MM-DD
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); // YYYY-MM-DD
     }
 
     function setRange(days) {
@@ -99,171 +200,260 @@
     }
 
     async function load() {
-      const tilesSlot = el('div', { class: 'center' }, el('div', { class: 'spinner' }));
-      render(header(), tilesSlot);
+      const app = $('#app');
+      if (!loaded) render(controls(), el('div', { class: 'center' }, el('div', { class: 'spinner' })));
+      else app.classList.add('loading');
       let data;
       try {
         data = await api('dashboard', {
           from: state.from, to: state.to, branch_code: state.branch_code, category_code: state.category_code, tech: state.tech,
         });
       } catch (err) {
-        clear(tilesSlot).appendChild(el('p', { class: 'err' }, errorText(err)));
+        app.classList.remove('loading');
+        render(controls(), el('p', { class: 'err' }, errorText(err)));
         return;
       }
+      state.techs = data.techs;
       charts.forEach(function (c) { c.destroy(); });
       charts = [];
-      render(header(data.techs), body(data));
+      render(controls(), el('div', { class: 'body' }, overview(data), chartsGrid(data), tables(data)));
+      app.classList.remove('loading');
+      loaded = true;
       drawCharts(data);
     }
 
-    // --- filters (one row above everything) -------------------------------------------------
+    // --- filters ------------------------------------------------------------------------------
 
-    function header(techs) {
-      const from = el('input', { type: 'date', value: state.from });
-      const to = el('input', { type: 'date', value: state.to });
+    function controls() {
       const branch = el('select', {}, option('', 'ทุกร้าน'), ME.branches.map(function (b) { return option(b.branch_code, b.name, b.branch_code === state.branch_code); }));
       const category = el('select', {}, option('', 'ทุกหมวด'), ME.categories.map(function (c) { return option(c.category_code, c.name_th, c.category_code === state.category_code); }));
-      const tech = el('select', {}, option('', 'ช่างทุกคน'), (techs || (state.tech ? [state.tech] : [])).map(function (t) { return option(t, t, t === state.tech); }));
-      const apply = function () {
-        Object.assign(state, { from: from.value, to: to.value, branch_code: branch.value, category_code: category.value, tech: tech.value, days: -1 });
-        load();
-      };
-      [from, to, branch, category, tech].forEach(function (c) { c.addEventListener('change', apply); });
+      const techList = state.techs.length ? state.techs : (state.tech ? [state.tech] : []);
+      const tech = el('select', {}, option('', 'ช่างทุกคน'), techList.map(function (t) { return option(t, techLabel(t), t === state.tech); }));
+      const from = el('input', { type: 'date', value: state.from });
+      const to = el('input', { type: 'date', value: state.to });
+      [branch, category, tech].forEach(function (c) {
+        c.addEventListener('change', function () {
+          Object.assign(state, { branch_code: branch.value, category_code: category.value, tech: tech.value });
+          load();
+        });
+      });
+      [from, to].forEach(function (c) {
+        c.addEventListener('change', function () { Object.assign(state, { from: from.value, to: to.value, days: -1 }); load(); });
+      });
       return [
-        el('h1', {}, 'Dashboard งานซ่อม'),
-        el('div', { class: 'quick' }, RANGES.map(function (r) {
-          return el('button', { type: 'button', class: state.days === r.days ? 'active' : '', onclick: function () { setRange(r.days); load(); } }, r.label);
-        })),
-        el('div', { class: 'filters' },
-          field('ตั้งแต่', from), field('ถึง', to), field('ร้าน', branch), field('หมวด', category)),
-        el('div', { class: 'filters' }, field('ช่าง / ช่างนอก', tech)),
+        el('header', { class: 'top' }, el('h1', {}, 'Dashboard งานซ่อม'), el('p', { class: 'scope' }, scopeText())),
+        el('div', { class: 'controls' },
+          el('div', { class: 'seg', role: 'group', 'aria-label': 'ช่วงเวลา' }, RANGES.map(function (r) {
+            return el('button', { type: 'button', 'aria-pressed': String(state.days === r.days), onclick: function () { setRange(r.days); load(); } }, r.label);
+          })),
+          el('div', { class: 'filters' }, field('ร้าน', branch), field('หมวด', category), el('div', { class: 'f-tech' }, field('ช่าง / ช่างนอก', tech)))),
+        el('details', { class: 'custom', open: state.days === -1 },
+          el('summary', {}, 'เลือกวันที่เอง'),
+          el('div', { class: 'dates' }, field('ตั้งแต่', from), field('ถึง', to))),
       ];
     }
 
-    // --- layout -----------------------------------------------------------------------------
-
-    function body(d) {
-      const pct = function (x) { return x === null || x === undefined ? '-' : Math.round(x * 100) + '%'; };
-      const tile = function (n, label, alert) { return el('div', { class: 'tile' }, el('div', { class: 'n' + (alert ? ' alert' : '') }, n), el('div', { class: 'l' }, label)); };
-      return [
-        el('div', { class: 'tiles' },
-          tile(d.cards.open_count, 'งานที่ยังไม่เสร็จ'),
-          tile(d.cards.overdue_count, 'งานเลยกำหนด', d.cards.overdue_count > 0),
-          tile(d.cards.avg_response_hours === null ? '-' : d.cards.avg_response_hours + ' ชม.', 'เวลาเข้าหน้างานเฉลี่ย'),
-          tile(fmtMoney(d.cards.cost_this_month), 'ค่าซ่อมเดือนนี้')),
-        el('div', { class: 'tiles' },
-          tile(d.kpi.total, 'งานในช่วงที่เลือก'),
-          tile(pct(d.kpi.maintenance_rate), 'ปิดงานแล้ว (Maintenance)'),
-          tile(pct(d.kpi.lead_time_rate), 'เสร็จทันกำหนด (Lead Time)'),
-          tile(pct(d.kpi.repeat_rate), 'งานซ่อมซ้ำ (Quality)')),
-        el('div', { class: 'charts' },
-          chartBox('c-branch', 'งานตามร้านและสถานะ', 'จำนวนงานที่แจ้งในช่วงที่เลือก', tableBranch(d)),
-          chartBox('c-month', 'งานรายเดือนตามหมวด', 'นับจากวันที่แจ้ง', tableMonth(d)),
-          chartBox('c-cost', 'ค่าซ่อมรายเดือนตามร้าน', 'นับจากวันที่ซ่อมเสร็จ (บาท)', tableCost(d), true),
-          el('div', { class: 'chart full' }, el('h2', {}, 'ผลงานช่าง'), el('div', { class: 'scroll' }, tableTech(d))),
-          el('div', { class: 'chart full' }, el('h2', {}, 'งานเลยกำหนด (' + d.cards.overdue_count + ')'),
-            el('div', { class: 'sub' }, 'งานที่ยังไม่เสร็จและเลยกำหนดเสร็จแล้ว แสดงไม่เกิน 20 งาน'), el('div', { class: 'scroll' }, tableOverdue(d))),
-          el('div', { class: 'chart full' }, el('h2', {}, 'งานที่อาจซ่อมซ้ำ'),
-            el('div', { class: 'sub' }, 'ร้าน Area และหมวดเดียวกัน แจ้งใหม่ภายใน 7 วันหลังงานก่อนปิด'), el('div', { class: 'scroll' }, tableRepeat(d)))),
-      ];
+    function scopeText() {
+      const parts = [];
+      if (state.from || state.to) parts.push((state.from ? thDay(state.from) : 'เริ่มต้น') + ' – ' + (state.to ? thDay(state.to) : 'วันนี้'));
+      else parts.push('ทุกช่วงเวลา รวมงานเก่าที่ไม่มีวันที่');
+      parts.push(state.branch_code ? branchName(state.branch_code) : 'ทุกร้าน');
+      if (state.category_code) parts.push(shortCategory(state.category_code));
+      if (state.tech) parts.push(techLabel(state.tech));
+      return parts.join(' · ');
     }
 
-    function chartBox(id, title, sub, table, full) {
-      return el('div', { class: 'chart' + (full ? ' full' : '') },
-        el('h2', {}, title), el('div', { class: 'sub' }, sub),
-        el('div', { class: 'canvas' }, el('canvas', { id: id, role: 'img', 'aria-label': title })),
-        el('details', {}, el('summary', {}, 'ดูเป็นตาราง'), el('div', { class: 'scroll' }, table)));
+    // --- overview -----------------------------------------------------------------------------
+
+    function overview(d) {
+      const overdue = d.cards.overdue_count;
+      return el('div', { class: 'overview' },
+        el('section', { class: 'now' },
+          el('div', { class: 'sec-head' }, el('h2', {}, 'ตอนนี้'), el('span', { class: 'note' }, 'ไม่ขึ้นกับช่วงวันที่')),
+          el('div', { class: 'figs' },
+            fig(d.cards.open_count.toLocaleString('th-TH'), 'งานที่ยังไม่เสร็จ'),
+            fig(overdue > 0 ? [icon('alert'), overdue.toLocaleString('th-TH')] : '0', 'งานเลยกำหนด', overdue > 0),
+            fig(money(d.cards.cost_this_month), 'ค่าซ่อมเดือนนี้ (บาท)'))),
+        el('section', { class: 'panel' },
+          el('div', { class: 'sec-head' }, el('h2', {}, 'ในช่วงที่เลือก')),
+          el('div', { class: 'period-figs' },
+            el('div', {}, el('div', { class: 'n' }, d.kpi.total.toLocaleString('th-TH')), el('div', { class: 'l' }, 'งานที่แจ้ง')),
+            el('div', {}, el('div', { class: 'n' }, d.cards.avg_response_hours === null ? '-' : d.cards.avg_response_hours + ' ชม.'),
+              el('div', { class: 'l' }, 'เวลาเฉลี่ยกว่าช่างถึงหน้างาน'))),
+          el('div', { class: 'kpis' },
+            meter('ปิดงานแล้ว', d.kpi.maintenance_rate, 'งานที่ปิดแล้ว เทียบกับงานที่แจ้งทั้งหมด (ไม่นับที่ยกเลิก)'),
+            meter('เสร็จทันกำหนด', d.kpi.lead_time_rate, 'งานที่ซ่อมเสร็จไม่เกินกำหนด เทียบกับงานที่เสร็จแล้ว'),
+            meter('งานซ่อมซ้ำ', d.kpi.repeat_rate, 'งานที่ต้องกลับไปซ่อมซ้ำ เทียบกับงานที่ปิดแล้ว ยิ่งน้อยยิ่งดี', 'warn'))));
     }
 
-    function table(headers, rows, numCols) {
+    function fig(value, label, alert) {
+      return el('div', { class: 'fig' + (alert ? ' alert' : '') }, el('div', { class: 'n' }, value), el('div', { class: 'l' }, label));
+    }
+
+    function meter(name, rate, note, tone) {
+      const v = rate === null || rate === undefined ? null : Math.round(rate * 100);
+      return el('div', { class: 'kpi' },
+        el('div', { class: 'kpi-head' }, el('span', { class: 'kpi-name' }, name), el('span', { class: 'kpi-val' }, v === null ? '-' : v + '%')),
+        el('div', { class: 'meter' + (tone ? ' ' + tone : ''), role: 'img', 'aria-label': name + ' ' + (v === null ? 'ยังไม่มีข้อมูล' : v + '%') },
+          el('i', { style: 'width:' + (v || 0) + '%' })),
+        el('p', { class: 'kpi-note' }, note));
+    }
+
+    function icon(name) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('class', 'ico');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', ICONS[name]);
+      svg.appendChild(path);
+      return svg;
+    }
+
+    // --- charts and tables layout -------------------------------------------------------------
+
+    function chartsGrid(d) {
+      const b = branchMatrix(d);
+      return el('div', { class: 'grid' },
+        chartBox('c-branch', 'งานแต่ละร้าน', 'แยกตามสถานะ ตัวเลขท้ายแท่งคือจำนวนงานทั้งหมด', tableBranch(b), 56 + b.branches.length * 38),
+        chartBox('c-month', 'งานที่แจ้งรายเดือน', 'นับตามวันที่แจ้ง', tableSimple(['เดือน', 'งาน'], monthTotals(d).map(function (r) { return [thMonth(r.key), r.value]; }))),
+        chartBox('c-cat', 'หมวดที่แจ้งบ่อย', 'จำนวนงานในช่วงที่เลือก', tableSimple(['หมวด', 'งาน'], categoryTotals(d).map(function (r) { return [categoryName(r.key), r.value]; }))),
+        chartBox('c-cost', 'ค่าซ่อมรายเดือน', 'บาท นับตามวันที่ซ่อมเสร็จ แตะแท่งเพื่อดูแยกตามร้าน', tableCost(d)));
+    }
+
+    function tables(d) {
+      return el('div', { class: 'grid' },
+        el('section', { class: 'panel full' },
+          el('h2', {}, 'งานเลยกำหนด'),
+          el('p', { class: 'sub' }, 'งานที่ยังไม่เสร็จและเลยกำหนดแล้ว เรียงจากเลยนานที่สุด แสดงไม่เกิน 20 งาน'),
+          d.overdue_list.length ? el('div', { class: 'scroll' }, tableOverdue(d)) : el('p', { class: 'empty good' }, icon('check'), 'ไม่มีงานเลยกำหนด')),
+        el('section', { class: 'panel full' },
+          el('h2', {}, 'ผลงานช่าง'),
+          el('p', { class: 'sub' }, 'งานที่แจ้งในช่วงที่เลือก แยกตามคนที่รับงาน'),
+          el('div', { class: 'scroll' }, tableTech(d))),
+        el('section', { class: 'panel full' },
+          el('h2', {}, 'งานที่อาจซ่อมซ้ำ'),
+          el('p', { class: 'sub' }, 'ร้าน Area และหมวดเดียวกัน แจ้งใหม่ภายใน 7 วันหลังงานก่อนปิด'),
+          d.repeat_candidates.length ? el('div', { class: 'scroll' }, tableRepeat(d)) : el('p', { class: 'empty good' }, icon('check'), 'ไม่พบงานที่ซ่อมซ้ำ')));
+    }
+
+    function chartBox(id, title, sub, tableNode, height) {
+      return el('section', { class: 'panel' },
+        el('h2', {}, title), el('p', { class: 'sub' }, sub),
+        el('div', { class: 'canvas', style: height ? 'height:' + height + 'px' : null }, el('canvas', { id: id, role: 'img', 'aria-label': title })),
+        el('details', {}, el('summary', {}, 'ดูเป็นตาราง'), el('div', { class: 'scroll' }, tableNode)));
+    }
+
+    /** stackLabels: per-column prefix shown when the table stacks on phones (null = no prefix). */
+    function table(headers, rows, numCols, stackLabels) {
       if (!rows.length) return el('p', { class: 'muted' }, 'ไม่มีข้อมูล');
-      return el('table', { class: 'data' },
+      return el('table', { class: 'data' + (stackLabels ? ' stack' : '') },
         el('thead', {}, el('tr', {}, headers.map(function (h, i) { return el('th', { class: numCols.indexOf(i) !== -1 ? 'num' : '' }, h); }))),
         el('tbody', {}, rows.map(function (r) {
-          return el('tr', {}, r.map(function (c, i) { return el('td', { class: numCols.indexOf(i) !== -1 ? 'num' : '' }, c); }));
+          return el('tr', {}, r.map(function (c, i) {
+            const cell = c && c.cell ? c : { cell: c };
+            return el('td', { class: (numCols.indexOf(i) !== -1 ? 'num ' : '') + (cell.cls || ''), 'data-label': stackLabels && stackLabels[i] }, cell.cell);
+          }));
         })));
+    }
+
+    function tableSimple(headers, rows) {
+      return table(headers, rows.map(function (r) { return [r[0], r[1].toLocaleString('th-TH')]; }), [1]);
     }
 
     // --- data shaping -------------------------------------------------------------------------
 
     const branchName = function (code) { return nameOf(ME.branches, 'branch_code', code, 'name'); };
-    const categoryName = function (code) { return nameOf(ME.categories, 'category_code', code, 'name_th'); };
+    const categoryName = function (code) { return nameOf(ME.categories, 'category_code', code, 'name_th') || 'ไม่ระบุหมวด'; };
+    const shortCategory = function (code) { return String(categoryName(code)).split(' / ')[0]; };
+    const techLabel = function (t) { return t === '(ไม่ระบุ)' ? 'ไม่ระบุช่าง' : t; };
+    const money = function (n) { return Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 }); };
     const thMonth = function (ym) {
       const p = ym.split('-');
       return new Date(Date.UTC(+p[0], +p[1] - 1, 15)).toLocaleDateString('th-TH', { month: 'short', year: '2-digit', timeZone: 'UTC' });
     };
-    const uniq = function (list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }); };
+    const thDay = function (s) {
+      const p = s.split('-');
+      return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' });
+    };
     const sum = function (rows, pick) { return rows.reduce(function (s, r) { return s + pick(r); }, 0); };
 
+    /** [{key, value}] summed by keyFn. */
+    function totals(rows, keyFn, valueFn) {
+      const out = {};
+      rows.forEach(function (r) { const k = keyFn(r); out[k] = (out[k] || 0) + valueFn(r); });
+      return Object.keys(out).map(function (k) { return { key: k, value: out[k] }; });
+    }
+
+    /** Branches sorted by total jobs, one series per status group. */
     function branchMatrix(d) {
-      const branches = ME.branches.map(function (b) { return b.branch_code; })
-        .filter(function (b) { return d.by_branch_status.some(function (r) { return r.branch === b; }); });
-      return STATUS_GROUPS.map(function (g, gi) {
+      const byBranch = totals(d.by_branch_status, function (r) { return r.branch; }, function (r) { return r.count; })
+        .sort(function (a, b) { return b.value - a.value; });
+      const branches = byBranch.map(function (r) { return r.key; });
+      const series = STATUS_GROUPS.map(function (g) {
         return {
-          label: g.label, color: SERIES[gi],
+          label: g.label, color: cssVar(g.color),
           values: branches.map(function (b) { return sum(d.by_branch_status.filter(function (r) { return r.branch === b && g.statuses.indexOf(r.status) !== -1; }), function (r) { return r.count; }); }),
         };
-      }).filter(function (s) { return s.values.some(Boolean); }).concat([{ branches: branches }]);
-    }
-
-    function monthMatrix(d) {
-      const months = uniq(d.by_month_category.map(function (r) { return r.month; })).sort();
-      const series = ME.categories.map(function (c, ci) {
-        return {
-          label: c.name_th, color: SERIES[ci % SERIES.length],
-          values: months.map(function (m) { return sum(d.by_month_category.filter(function (r) { return r.month === m && r.category === c.category_code; }), function (r) { return r.count; }); }),
-        };
       }).filter(function (s) { return s.values.some(Boolean); });
-      return { months: months, series: series };
+      return { branches: branches, series: series };
     }
 
-    function costMatrix(d) {
-      const months = uniq(d.cost_by_branch_month.map(function (r) { return r.month; })).sort();
-      const series = ME.branches.map(function (b, bi) {
-        return {
-          label: b.name, color: SERIES[bi % SERIES.length],
-          values: months.map(function (m) { return sum(d.cost_by_branch_month.filter(function (r) { return r.month === m && r.branch === b.branch_code; }), function (r) { return r.cost; }); }),
-        };
-      }).filter(function (s) { return s.values.some(Boolean); });
-      return { months: months, series: series };
+    function monthTotals(d) {
+      return totals(d.by_month_category, function (r) { return r.month; }, function (r) { return r.count; })
+        .sort(function (a, b) { return a.key < b.key ? -1 : 1; });
     }
 
-    function tableBranch(d) {
-      const m = branchMatrix(d);
-      const branches = m.pop().branches;
-      return table(['ร้าน'].concat(m.map(function (s) { return s.label; })),
-        branches.map(function (b, i) { return [branchName(b)].concat(m.map(function (s) { return s.values[i]; })); }),
-        m.map(function (_, i) { return i + 1; }));
+    function categoryTotals(d) {
+      return totals(d.by_month_category, function (r) { return r.category; }, function (r) { return r.count; })
+        .sort(function (a, b) { return b.value - a.value; });
     }
 
-    function tableMonth(d) {
-      const m = monthMatrix(d);
-      return table(['เดือน'].concat(m.series.map(function (s) { return s.label; })),
-        m.months.map(function (mo, i) { return [thMonth(mo)].concat(m.series.map(function (s) { return s.values[i]; })); }),
-        m.series.map(function (_, i) { return i + 1; }));
+    function costMonths(d) {
+      return totals(d.cost_by_branch_month, function (r) { return r.month; }, function (r) { return r.cost; })
+        .filter(function (r) { return r.value > 0; })
+        .sort(function (a, b) { return a.key < b.key ? -1 : 1; });
+    }
+
+    function tableBranch(m) {
+      return table(['ร้าน'].concat(m.series.map(function (s) { return s.label; }), ['รวม']),
+        m.branches.map(function (b, i) {
+          const row = m.series.map(function (s) { return s.values[i]; });
+          return [branchName(b)].concat(row, [row.reduce(function (a, x) { return a + x; }, 0)]);
+        }),
+        m.series.map(function (_, i) { return i + 1; }).concat([m.series.length + 1]));
     }
 
     function tableCost(d) {
-      const m = costMatrix(d);
-      return table(['เดือน'].concat(m.series.map(function (s) { return s.label; })),
-        m.months.map(function (mo, i) { return [thMonth(mo)].concat(m.series.map(function (s) { return s.values[i].toLocaleString('th-TH'); })); }),
-        m.series.map(function (_, i) { return i + 1; }));
+      const months = costMonths(d).map(function (r) { return r.key; });
+      const branches = ME.branches.filter(function (b) { return d.cost_by_branch_month.some(function (r) { return r.branch === b.branch_code && r.cost > 0; }); });
+      return table(['เดือน'].concat(branches.map(function (b) { return b.name; }), ['รวม']),
+        months.map(function (mo) {
+          const row = branches.map(function (b) { return sum(d.cost_by_branch_month.filter(function (r) { return r.month === mo && r.branch === b.branch_code; }), function (r) { return r.cost; }); });
+          return [thMonth(mo)].concat(row.map(money), [money(row.reduce(function (a, x) { return a + x; }, 0))]);
+        }),
+        branches.map(function (_, i) { return i + 1; }).concat([branches.length + 1]));
     }
 
     function tableTech(d) {
       const pct = function (x) { return x === null ? '-' : Math.round(x * 100) + '%'; };
-      return table(['ช่าง / ช่างนอก', 'งาน', 'เข้าหน้างานเฉลี่ย', 'เสร็จทันกำหนด'],
-        d.by_tech.slice().sort(function (a, b) { return b.jobs - a.jobs; }).map(function (t) {
-          return [t.tech, t.jobs, t.avg_response_hours === null ? '-' : t.avg_response_hours + ' ชม.', pct(t.on_time_rate)];
+      const rows = d.by_tech.slice().sort(function (a, b) {
+        if ((a.tech === '(ไม่ระบุ)') !== (b.tech === '(ไม่ระบุ)')) return a.tech === '(ไม่ระบุ)' ? 1 : -1;
+        return b.jobs - a.jobs;
+      });
+      return table(['ช่าง / ช่างนอก', 'งาน', 'ถึงหน้างานเฉลี่ย', 'เสร็จทันกำหนด'],
+        rows.map(function (t) {
+          return [techLabel(t.tech), t.jobs.toLocaleString('th-TH'), t.avg_response_hours === null ? '-' : t.avg_response_hours + ' ชม.', pct(t.on_time_rate)];
         }), [1, 2, 3]);
     }
 
     function tableOverdue(d) {
       return table(['งาน', 'ร้าน', 'ผู้รับงาน', 'กำหนดเสร็จ', 'เลยมา'],
         d.overdue_list.map(function (j) {
-          return [el('a', { href: 'job.html?id=' + encodeURIComponent(j.job_id) }, j.job_id + ' ' + j.title), branchName(j.branch_code), j.tech, fmtDate(j.due_at),
-            j.hours_overdue >= 48 ? Math.floor(j.hours_overdue / 24) + ' วัน' : j.hours_overdue + ' ชม.'];
-        }), [4]);
+          return [el('a', { href: 'job.html?id=' + encodeURIComponent(j.job_id) }, j.job_id + ' ' + j.title), branchName(j.branch_code), techLabel(j.tech), fmtDate(j.due_at),
+            { cell: j.hours_overdue >= 48 ? Math.floor(j.hours_overdue / 24) + ' วัน' : j.hours_overdue + ' ชม.', cls: 'late' }];
+        }), [4], [null, null, 'ช่าง', 'กำหนด', 'เลยมา']);
     }
 
     function tableRepeat(d) {
@@ -271,57 +461,106 @@
         d.repeat_candidates.map(function (r) {
           return [el('a', { href: 'job.html?id=' + encodeURIComponent(r.job_id) }, r.job_id + ' ' + r.title),
             el('a', { href: 'job.html?id=' + encodeURIComponent(r.previous_job_id) }, r.previous_job_id),
-            branchName(r.branch_code) + ' · ' + r.area + ' · ' + categoryName(r.category_code), fmtDate(r.created_at)];
-        }), []);
+            branchName(r.branch_code) + ' · ' + r.area + ' · ' + shortCategory(r.category_code), fmtDate(r.created_at)];
+        }), [], [null, 'ต่อจาก', null, 'แจ้ง']);
     }
 
     // --- charts (Chart.js) ----------------------------------------------------------------------
 
+    /** Writes each bar's total at its end, so the numbers read without hovering. */
+    const valueLabels = {
+      id: 'valueLabels',
+      afterDatasetsDraw: function (chart, args, opts) {
+        const metas = chart.getSortedVisibleDatasetMetas();
+        if (!metas.length) return;
+        const horizontal = chart.options.indexAxis === 'y';
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = '600 12px ' + FONT;
+        ctx.fillStyle = cssVar('--ink');
+        chart.data.labels.forEach(function (_, i) {
+          let total = 0;
+          let tip = null;
+          metas.forEach(function (m) {
+            const v = chart.data.datasets[m.index].data[i] || 0;
+            if (!v || !m.data[i]) return;
+            const bar = m.data[i].getProps(['x', 'y'], true); // final position, so labels don't chase the animation
+            total += v;
+            tip = tip === null ? (horizontal ? bar.x : bar.y) : (horizontal ? Math.max(tip, bar.x) : Math.min(tip, bar.y));
+          });
+          if (!total) return;
+          const first = metas[0].data[i].getProps(['x', 'y'], true);
+          const text = opts.format ? opts.format(total) : total.toLocaleString('th-TH');
+          ctx.textAlign = horizontal ? 'left' : 'center';
+          ctx.textBaseline = horizontal ? 'middle' : 'bottom';
+          ctx.fillText(text, horizontal ? tip + 6 : first.x, horizontal ? first.y : tip - 4);
+        });
+        ctx.restore();
+      },
+    };
+
     function drawCharts(d) {
       const b = branchMatrix(d);
-      const branches = b.pop().branches;
-      stacked('c-branch', branches.map(branchName), b, true, 'งาน');
-      const m = monthMatrix(d);
-      stacked('c-month', m.months.map(thMonth), m.series, false, 'งาน');
-      const c = costMatrix(d);
-      stacked('c-cost', c.months.map(thMonth), c.series, false, 'บาท');
+      bars('c-branch', b.branches.map(branchName), b.series, { horizontal: true, unit: 'งาน', legend: true });
+      const m = monthTotals(d);
+      bars('c-month', m.map(function (r) { return thMonth(r.key); }), [{ label: 'งาน', color: cssVar('--forest'), values: m.map(function (r) { return r.value; }) }], { unit: 'งาน' });
+      const c = categoryTotals(d);
+      bars('c-cat', c.map(function (r) { return shortCategory(r.key); }), [{ label: 'งาน', color: cssVar('--forest'), values: c.map(function (r) { return r.value; }) }],
+        { horizontal: true, unit: 'งาน', height: 56 + c.length * 34, titles: c.map(function (r) { return categoryName(r.key); }) });
+      const cost = costMonths(d);
+      bars('c-cost', cost.map(function (r) { return thMonth(r.key); }), [{ label: 'ค่าซ่อม', color: cssVar('--money'), values: cost.map(function (r) { return r.value; }) }], {
+        unit: 'บาท', format: money,
+        breakdown: function (i) {
+          return d.cost_by_branch_month.filter(function (r) { return r.month === cost[i].key && r.cost > 0; })
+            .sort(function (x, y) { return y.cost - x.cost; })
+            .map(function (r) { return branchName(r.branch) + ': ' + money(r.cost) + ' บาท'; });
+        },
+      });
     }
 
-    /** Stacked bars: thin bars, 2px surface gap between segments, recessive grid, legend + hover tooltip. */
-    function stacked(id, labels, series, horizontal, unit) {
+    /** Bars with 4px rounded ends, 2px surface gaps between stacked segments, one recessive grid. */
+    function bars(id, labels, series, o) {
       const canvas = document.getElementById(id);
       if (!canvas) return;
       if (!labels.length || !series.length) {
-        canvas.parentNode.replaceChild(el('p', { class: 'muted center' }, 'ไม่มีข้อมูลในช่วงที่เลือก'), canvas);
+        canvas.parentNode.replaceWith(el('p', { class: 'empty' }, 'ไม่มีข้อมูลในช่วงที่เลือก'));
         return;
       }
-      const surface = cssVar('var(--surface-1)');
-      const ink2 = cssVar('var(--text-secondary)');
-      const grid = cssVar('var(--grid)');
-      const valueAxis = horizontal ? 'x' : 'y';
-      const scales = { x: { stacked: true, grid: { display: horizontal, color: grid }, ticks: { color: ink2 }, border: { display: false } },
-        y: { stacked: true, grid: { display: !horizontal, color: grid }, ticks: { color: ink2 }, border: { display: false } } };
-      scales[valueAxis].beginAtZero = true;
-      scales[valueAxis].ticks.precision = 0;
+      if (o.height) canvas.parentNode.style.height = o.height + 'px';
+      const horizontal = !!o.horizontal;
+      const grid = cssVar('--line');
+      const ink = cssVar('--ink');
+      const valueAxis = { stacked: true, beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { precision: 0, maxTicksLimit: 5, callback: o.format ? function (v) { return o.format(v); } : undefined } };
+      const catAxis = { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: ink, autoSkip: false } };
       charts.push(new Chart(canvas, {
         type: 'bar',
+        plugins: [valueLabels],
         data: {
           labels: labels,
           datasets: series.map(function (s) {
             return {
-              label: s.label, data: s.values, backgroundColor: cssVar(s.color),
-              borderColor: surface, borderWidth: 2, borderSkipped: false, borderRadius: 4,
-              maxBarThickness: 28, categoryPercentage: 0.7,
+              label: s.label, data: s.values, backgroundColor: s.color,
+              borderColor: '#ffffff', borderWidth: series.length > 1 ? { top: 0, bottom: 0, left: 2, right: 2 } : 0, borderSkipped: false, borderRadius: 4,
+              maxBarThickness: horizontal ? 22 : 36, categoryPercentage: 0.75, barPercentage: 0.9,
             };
           }),
         },
         options: {
           indexAxis: horizontal ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
-          scales: scales,
+          layout: { padding: horizontal ? { right: 40 } : { top: 20 } },
+          scales: horizontal ? { x: valueAxis, y: catAxis } : { x: catAxis, y: valueAxis },
           plugins: {
-            legend: { position: 'bottom', labels: { color: ink2, boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyle: 'rectRounded' } },
-            tooltip: { filter: function (ctx) { return !!ctx.raw; }, callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + ctx.raw.toLocaleString('th-TH') + ' ' + unit; } } },
+            valueLabels: { format: o.format },
+            legend: o.legend ? { position: 'top', align: 'start', labels: { color: ink, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rectRounded', padding: 14 } } : { display: false },
+            tooltip: {
+              filter: function (ctx) { return !!ctx.raw; },
+              callbacks: {
+                title: function (items) { return o.titles ? o.titles[items[0].dataIndex] : items[0].label; },
+                label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + (o.format ? o.format(ctx.raw) : ctx.raw.toLocaleString('th-TH')) + ' ' + o.unit; },
+                afterBody: o.breakdown ? function (items) { return o.breakdown(items[0].dataIndex); } : undefined,
+              },
+            },
           },
         },
       }));
