@@ -212,7 +212,73 @@ const SETUP_KNOWN_PROPS = {
   WEB_BASE_URL: 1, SHEET_ID: 1, DRIVE_FOLDER_ID: 1,
 };
 
-/** Phase 2 (PLAN §14). */
-function Setup_migrateLegacy(sourceSheetId) {
-  throw new Error('Setup_migrateLegacy: not implemented (phase 2)');
+// Values-only copy of the legacy "Maintenance List" (the 7 shop tabs), made on 1 Nov 2026 so the
+// original file is never touched. Not a secret: the file is private to its owner.
+const SETUP_LEGACY_SHEET_ID = '10NMXQlpB5M4y2_6myVNZikRERMHtVfhtQmkNdSAofKo';
+
+/** Editor entry points (the editor cannot pass arguments). Dry run first, then the real run. */
+function Setup_migrateLegacyDryRun() {
+  return Setup_migrateLegacy(SETUP_LEGACY_SHEET_ID, { dryRun: true });
+}
+
+function Setup_migrateLegacyRun() {
+  return Setup_migrateLegacy(SETUP_LEGACY_SHEET_ID);
+}
+
+/**
+ * Copies legacy jobs into Jobs (PLAN §14): no notifications, no JobLog, source = MIGRATED,
+ * job_id LG-{BRANCH}-{NNN}. Safe to re-run: rows whose branch + title + date already exist are skipped.
+ * opts.dryRun: only log what would be added.
+ */
+function Setup_migrateLegacy(sourceSheetId, opts) {
+  opts = opts || {};
+  if (!sourceSheetId) throw new Error('Setup_migrateLegacy: sourceSheetId is required');
+  const src = SpreadsheetApp.openById(sourceSheetId);
+  const now = new Date();
+
+  const existing = Repo_readAll('Jobs').filter(function (j) { return String(j.source) === 'MIGRATED'; });
+  const keys = {};
+  const lastNo = {};
+  existing.forEach(function (j) {
+    keys[Migrate_key(j)] = true;
+    const m = /^LG-([A-Z]+)-(\d+)$/.exec(String(j.job_id));
+    if (m) lastNo[m[1]] = Math.max(lastNo[m[1]] || 0, Number(m[2]));
+  });
+
+  const rows = [];
+  const report = [];
+  let skipped = 0;
+  Object.keys(MIGRATE_TABS).forEach(function (tab) {
+    const sheet = src.getSheetByName(tab);
+    if (!sheet) {
+      report.push(tab + ': tab not found');
+      return;
+    }
+    const values = sheet.getDataRange().getValues();
+    const headers = (values[MIGRATE_HEADER_ROW - 1] || []).map(function (h) { return String(h).trim(); });
+    const branch = MIGRATE_TABS[tab];
+    let added = 0;
+    for (let i = MIGRATE_HEADER_ROW; i < values.length; i++) {
+      const row = {};
+      headers.forEach(function (h, c) { if (h) row[h] = values[i][c]; });
+      const m = Migrate_row(tab, row);
+      if (!m) continue;
+      m.warnings.forEach(function (w) { report.push(tab + ' row ' + (i + 1) + ': ' + w); });
+      const key = Migrate_key(m.job);
+      if (keys[key]) {
+        skipped++;
+        continue;
+      }
+      keys[key] = true;
+      lastNo[branch] = (lastNo[branch] || 0) + 1;
+      rows.push(Object.assign(m.job, { job_id: Migrate_jobId(branch, lastNo[branch]), updated_at: now }));
+      added++;
+    }
+    report.push(tab + ' -> ' + branch + ': ' + added + ' new');
+  });
+
+  if (!opts.dryRun && rows.length) Repo_appendRows('Jobs', rows);
+  console.log('%s: %s new, %s already migrated (skipped)\n%s',
+    opts.dryRun ? 'Dry run (nothing written)' : 'Migrated', rows.length, skipped, report.join('\n'));
+  return { added: rows.length, skipped: skipped };
 }
