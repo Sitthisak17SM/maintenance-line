@@ -229,12 +229,30 @@ test('reassign to a TECH makes them the only candidate', () => {
   assert.deepEqual(JSON.parse(r.log.new_value), { candidate_ids: 'U_T3', assignee_id: '', vendor: '' });
 });
 
-test('reassign to a vendor makes the acting ADMIN the candidate', () => {
-  const r = run(job('ACCEPTED'), 'reassign', U.admin2, { target: null, vendor: ' Daikin ' });
-  assert.equal(r.fields.candidate_ids, 'U_ADM2');
-  assert.equal(r.fields.vendor, 'Daikin');
-  assert.equal(r.fields.route_to, 'ADMIN');
-  assert.equal(r.fields.assignee_id, '');
+test('reassign to a vendor: the acting ADMIN takes the job at once (ACCEPTED)', () => {
+  for (const from of ['NEW', 'REJECTED', 'ASSIGNED', 'ACCEPTED']) {
+    const r = run(job(from), 'reassign', U.admin2, { target: null, vendor: ' Daikin ' });
+    assert.equal(r.status, 'ACCEPTED', from);
+    assert.equal(r.log.to_status, 'ACCEPTED');
+    assert.equal(r.fields.candidate_ids, 'U_ADM2');
+    assert.equal(r.fields.vendor, 'Daikin');
+    assert.equal(r.fields.route_to, 'ADMIN');
+    assert.equal(r.fields.assignee_id, 'U_ADM2');
+    assert.equal(r.fields.assignee_name, U.admin2.name || '');
+    assert.equal(r.fields.accepted_at, NOW);
+    assert.deepEqual(JSON.parse(r.log.new_value), { candidate_ids: 'U_ADM2', assignee_id: 'U_ADM2', vendor: 'Daikin' });
+  }
+  // A technician reassign still waits for the technician to accept, and keeps accepted_at as is.
+  const t = run(job('ASSIGNED'), 'reassign', U.admin, { target: { userId: 'U_T3', role: 'TECH' } });
+  assert.equal(t.status, 'ASSIGNED');
+  assert.equal(t.fields.assignee_id, '');
+  assert.equal('accepted_at' in t.fields, false);
+});
+
+test('a vendor job taken by the ADMIN can be checked in and closed by that ADMIN', () => {
+  const r = run(job('ASSIGNED'), 'reassign', U.admin2, { target: null, vendor: 'Daikin' });
+  const taken = job('ACCEPTED', r.fields);
+  assert.equal(run(taken, 'checkin', U.admin2).status, 'IN_PROGRESS');
 });
 
 test('reassign validates the target', () => {

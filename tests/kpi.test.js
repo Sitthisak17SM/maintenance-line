@@ -148,6 +148,9 @@ test('stageHours: stale acceptance after a reassign, check-in before acceptance,
 test('techs list and helpers', () => {
   assert.deepEqual(Kpi_compute(JOBS, { now: NOW }).techs, ['(ไม่ระบุ)', 'Daikin', "P'Nut", 'ช่างตุน'].sort());
   assert.equal(Kpi_tech({ assignee_name: ' ', vendor: '' }), '(ไม่ระบุ)');
+  // On a vendor job the assignee is the ADMIN acting for the contractor; the contractor counts.
+  assert.equal(Kpi_tech({ assignee_name: 'แอดมิน', vendor: 'Daikin' }), 'Daikin');
+  assert.equal(Kpi_tech({ assignee_name: 'ช่างตุน', vendor: '' }), 'ช่างตุน');
   assert.equal(Kpi_responseHours({ created_at: at('2026-11-10T00:00:00Z'), accepted_at: at('2026-11-09T00:00:00Z') }), null);
 });
 

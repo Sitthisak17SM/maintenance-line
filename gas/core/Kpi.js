@@ -89,9 +89,12 @@ function Kpi_compute(jobs, opts) {
   };
 }
 
-/** Who handled the job: the technician's name, else the contractor, else "(ไม่ระบุ)". */
+/**
+ * Who handled the job: the contractor, else the technician's name, else "(ไม่ระบุ)". The
+ * contractor comes first because on a vendor job the assignee is the ADMIN acting for them.
+ */
 function Kpi_tech(j) {
-  return String(j.assignee_name || '').trim() || String(j.vendor || '').trim() || KPI_NO_TECH;
+  return String(j.vendor || '').trim() || String(j.assignee_name || '').trim() || KPI_NO_TECH;
 }
 
 /** Response time (PLAN §11): check-in, else acceptance, minus created_at, in hours. */

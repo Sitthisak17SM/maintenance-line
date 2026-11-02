@@ -31,7 +31,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - **`Users.active = FALSE`:** ใช้ API ไม่ได้ (ได้ `FORBIDDEN`) routing ข้าม และไม่ได้รับ push
     - ตั้งเป็น FALSE เมื่อ unfollow หรือ Admin แก้เอง
     - กลับเป็น TRUE อัตโนมัติเมื่อ follow OA อีกครั้ง (AOF ยืนยัน 30 ต.ค. 2026)
-- **งานช่างนอก:** ADMIN เป็นผู้รับงานแทน (`assignee_id` เป็นของ ADMIN) และบันทึกชื่อผู้รับเหมาในคอลัมน์ `vendor`
+- **งานช่างนอก:** ADMIN เป็นผู้รับงานแทน (`assignee_id` เป็นของ ADMIN) และบันทึกชื่อผู้รับเหมาในคอลัมน์ `vendor` ตั้งแต่ 2 พ.ย. 2026 การเลือกช่างนอกทำให้งานเป็น ACCEPTED ทันที (ADMIN ที่กดคือผู้รับงาน, `accepted_at` = ตอนกด) ไม่ต้องกดรับงานซ้ำ เพราะเดิมงานค้างที่ ASSIGNED โดยไม่มีการ์ดเตือนใคร
 
 ## 3. สถานะงาน
 
@@ -59,7 +59,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | accept | ASSIGNED | ACCEPTED | คนใน candidate_ids หรือ ADMIN | accepted_at, assignee_*; คนแรกที่กดได้งาน คนอื่นได้ CONFLICT | 1 |
 | reject | ASSIGNED, ACCEPTED | REJECTED | candidate หรือ assignee | เหตุผล (บังคับ), reject_count + 1, ล้าง assignee, push job_rejected ให้ ADMIN | 1 |
 | forward | ASSIGNED, ACCEPTED | ASSIGNED (NEW ถ้าไม่มี ADMIN ที่ active) | TECH ที่เป็น candidate หรือ assignee | เหตุผล (บังคับ), route_to = ADMIN, candidate_ids = ADMIN ทุกคน, ล้าง assignee, push job_new ให้ ADMIN พร้อมเหตุผล | 1 |
-| reassign | NEW, REJECTED, ASSIGNED, ACCEPTED | ASSIGNED | ADMIN | candidate_ids = คนที่เลือก (TECH หรือ ADMIN ที่ active) หรือ ADMIN เอง + vendor (ชื่อจากแท็บ Vendors), ล้าง assignee, assigned_at ใหม่, push job_new (ไม่ส่งให้ ADMIN ที่กดจ่ายงานเอง) | 1 |
+| reassign | NEW, REJECTED, ASSIGNED, ACCEPTED | ASSIGNED (เลือกช่าง) หรือ ACCEPTED (เลือกช่างนอก) | ADMIN | เลือกช่าง: candidate_ids = คนที่เลือก (TECH หรือ ADMIN ที่ active), ล้าง assignee, assigned_at ใหม่, push job_new (ไม่ส่งให้ ADMIN ที่กดจ่ายงานเอง) · เลือกช่างนอก: candidate_ids และ assignee = ADMIN ที่กด, vendor (ชื่อจากแท็บ Vendors), assigned_at และ accepted_at = ตอนกด ไม่ push (เปลี่ยน 2 พ.ย. 2026) | 1 |
 | checkin | ACCEPTED | IN_PROGRESS | assignee หรือ ADMIN | checkin_at | 1 |
 | close | ACCEPTED, IN_PROGRESS | DONE | assignee หรือ ADMIN | done_at, cause และ fix (ไม่บังคับ), แถว Parts (amount = qty × unit_price), cost_total, photos_after (อย่างน้อย 1 รูป server ตรวจด้วย), onsite_note แล้ว push job_done ให้ผู้แจ้ง | 1 |
 | ack | DONE | CLOSED | ผู้แจ้ง, MANAGER ของสาขานั้น, ADMIN | closed_at, ack_by, ack_at | 1 |
@@ -323,7 +323,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | card | ส่งเมื่อ | ถึงใคร | ปุ่ม | ชนิด | เฟส |
 |---|---|---|---|---|---|
 | welcome | follow | ผู้ใช้ใหม่ | ลงทะเบียน | reply | 1 |
-| job_new | create, forward, reassign | candidates | รับงาน (postback) · ปฏิเสธ (LIFF job?do=reject) · รายละเอียด | push | 1 |
+| job_new | create, forward, reassign (เลือกช่าง) | candidates | รับงาน (postback) · ปฏิเสธ (LIFF job?do=reject) · รายละเอียด | push | 1 |
 | job_received | ได้เลขงานจาก liff.sendMessages | ผู้แจ้ง | ดูสถานะ | reply | 1 |
 | accept_result | กดรับงาน | คนที่กด | เปิดงาน (หรือแจ้งว่ามีคนรับไปแล้ว) | reply | 1 |
 | job_rejected | reject | ADMIN | จ่ายงานใหม่ (LIFF admin) | push | 1 |
@@ -506,7 +506,7 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 
 - **ช่วงวันที่:** กรองจาก `created_at` เป็นวันตามเวลาไทย (`from`/`to` แบบ `YYYY-MM-DD` และ `to` รวมทั้งวัน) ค่าเริ่มต้น 90 วันล่าสุด งานที่ไม่มีวันที่ (งานเก่า) นับเฉพาะเมื่อเลือก "ทั้งหมด"
 - **ตัวเลข "ตอนนี้" ไม่ขึ้นกับช่วงวันที่:** `open_count` (งานเปิด), `overdue_count` (งานเปิดที่เลย `due_at`) และ `cost_this_month` (รวม `cost_total` ของงานที่ `done_at` อยู่ในเดือนปฏิทินนี้ตามเวลาไทย) ส่วนตัวกรองร้าน หมวด และช่างใช้กับทุกตัวเลข
-- **ช่าง:** `assignee_name` ถ้าไม่มีใช้ `vendor` ถ้าไม่มีทั้งคู่เป็น "(ไม่ระบุ)" เพราะงานเก่ามีแค่ชื่อ
+- **ช่าง:** `vendor` ถ้าไม่มีใช้ `assignee_name` ถ้าไม่มีทั้งคู่เป็น "(ไม่ระบุ)" (เปลี่ยน 2 พ.ย. 2026: งานช่างนอกมี `assignee_name` เป็นชื่อ ADMIN ที่รับแทน จึงต้องนับเป็นชื่อช่างนอก เหมือนที่หน้างานแสดง)
 - **KPI:** Maintenance = CLOSED ÷ งานที่ไม่ถูกยกเลิก, Lead Time = เสร็จไม่เกิน `due_at` ÷ งานที่เสร็จแล้วและมี `due_at`, Quality = `is_repeat` ÷ CLOSED, Response = ค่าเฉลี่ยของ (checkin_at หรือ accepted_at) − created_at
 - **ค่าซ่อมรายเดือน:** นับตามเดือนของ `done_at` (`budget` เป็น null จนถึงเฟส 3)
 - **งานซ่อมซ้ำ:** ร้าน + Area + หมวดเดียวกัน แจ้งใหม่ภายใน 7 วันหลัง `closed_at` (ถ้าไม่มีใช้ `done_at`) ของงานก่อนหน้า งานที่ไม่มี Area ไม่นับ แสดงไม่เกิน 20 รายการ

@@ -205,17 +205,22 @@ const Status_apply_ = {
       candidate = target.userId;
       routeTo = target.role;
     }
+    // A vendor job is taken by the acting ADMIN at once (decided 2 Nov 2026): they just chose the
+    // contractor, and a separate accept step left the job waiting with nobody notified.
+    const taken = !!vendor;
     const before = { candidate_ids: String(job.candidate_ids || ''), assignee_id: String(job.assignee_id || ''), vendor: String(job.vendor || '') };
-    const after = { candidate_ids: candidate, assignee_id: '', vendor: vendor };
+    const after = { candidate_ids: candidate, assignee_id: taken ? actor.userId : '', vendor: vendor };
+    const fields = {
+      route_to: routeTo, candidate_ids: candidate, vendor: vendor,
+      assignee_id: after.assignee_id, assignee_name: taken ? actor.name || '' : '', assigned_at: now, ext_pending: false,
+    };
+    if (taken) fields.accepted_at = now;
     return {
-      status: 'ASSIGNED',
+      status: taken ? 'ACCEPTED' : 'ASSIGNED',
       reason: String(input.reason || '').trim().slice(0, STATUS_REASON_MAX),
       old_value: JSON.stringify(before),
       new_value: JSON.stringify(after),
-      fields: {
-        route_to: routeTo, candidate_ids: candidate, vendor: vendor,
-        assignee_id: '', assignee_name: '', assigned_at: now, ext_pending: false,
-      },
+      fields: fields,
     };
   },
 

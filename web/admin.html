@@ -184,7 +184,7 @@
       const vendor = el('select', {}, option('', '— เลือกช่างนอก —'),
         opts.vendors.map(function (v) { return option(v.name, v.name); }));
       const userField = field('ช่าง', user);
-      const vendorField = field('ช่างนอก / ผู้รับเหมา', vendor, 'Admin เป็นผู้รับงานแทน และบันทึกชื่อช่างนอกไว้ในงาน');
+      const vendorField = field('ช่างนอก / ผู้รับเหมา', vendor, 'คุณจะเป็นผู้รับงานแทนทันที (ไม่ต้องกดรับงานอีก) แล้วประสานงานกับช่างนอก ปิดงานแทนเมื่อเสร็จ');
       const reason = el('textarea', { maxlength: 500, placeholder: 'ไม่บังคับ' });
       const msg = el('p', { class: 'msg', hidden: true });
       const submit = el('button', { type: 'submit', class: 'btn' }, 'จ่ายงาน');
