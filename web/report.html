@@ -45,6 +45,8 @@
           priorityBadge(s.priority), el('span', {}, s.label_th));
       });
       const photos = photoPicker(me.config.PHOTO_MAX_COUNT, me.config.PHOTO_MAX_EDGE_PX, 'ถ่าย/เลือกรูป');
+      // Follows the server's flag (Config REPORT_PHOTO_REQUIRED); the server checks again on createJob.
+      const photoRequired = me.config.REPORT_PHOTO_REQUIRED === true;
       const msg = el('p', { class: 'msg', hidden: true });
       const submit = el('button', { type: 'submit', class: 'btn' }, 'ส่งแจ้งซ่อม');
 
@@ -76,7 +78,8 @@
         field('รายละเอียด', detail),
         el('div', { class: 'field' }, el('span', { class: 'label' }, 'ความเร่งด่วน'), priorities),
         field('เบอร์โทรติดต่อ', phone),
-        el('div', { class: 'field' }, el('span', { class: 'label' }, 'รูป (ไม่เกิน ' + me.config.PHOTO_MAX_COUNT + ' รูป)'), photos.node),
+        el('div', { class: 'field' }, el('span', { class: 'label' },
+          'รูป (' + (photoRequired ? 'อย่างน้อย 1 รูป ' : '') + 'ไม่เกิน ' + me.config.PHOTO_MAX_COUNT + ' รูป)'), photos.node),
         msg, submit);
 
       form.addEventListener('submit', async function (e) {
@@ -88,6 +91,7 @@
         if (!category.value) return invalid(msg, 'กรุณาเลือกหมวด', category);
         if (!title.value.trim()) return invalid(msg, 'กรุณากรอกหัวข้อ', title);
         if (!priority) return invalid(msg, 'กรุณาเลือกความเร่งด่วน', form.querySelector('input[name=priority]'));
+        if (photoRequired && !photos.count()) return invalid(msg, 'กรุณาแนบรูปอย่างน้อย 1 รูป', photos.node);
 
         const result = await busy(submit, msg, photos.count() ? 'กำลังส่งรูปและบันทึก…' : 'กำลังบันทึก…', function () {
           return api('createJob', {

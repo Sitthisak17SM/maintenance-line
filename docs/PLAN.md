@@ -190,6 +190,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | REMIND_AT_PERCENT | 75 | เตือนเมื่อใช้เวลาไปถึงกี่ % |
 | ACCEPT_TARGET_HOURS | 1 | Dashboard: เป้าเวลาที่ช่างควรกดรับงาน (ชั่วโมง) ไม่มีแถวหรือว่าง = 1 |
 | PHOTO_MAX_COUNT | 4 | ต่อการส่ง 1 ครั้ง |
+| REPORT_PHOTO_REQUIRED | TRUE | บังคับแนบรูปอย่างน้อย 1 รูปตอนแจ้งซ่อม ไม่มีแถวหรือว่าง = TRUE ตั้ง FALSE เพื่อปิด (เพิ่ม 2 พ.ย. 2026) |
 | PHOTO_MAX_EDGE_PX | 1280 | ย่อด้านยาวก่อนอัปโหลด |
 | VIDEO_MAX_MB | 0 | 0 = ยังไม่รับวิดีโอ (เปิดในเฟส 2 หลังทดสอบ) |
 | FLEX_SHOW_PHOTO | TRUE | แสดงรูปแรกบนการ์ด job_new ถ้าไม่มีแถวนี้ถือว่า TRUE (ตั้ง FALSE ถ้ารูปไม่แสดง ดู §18) |
@@ -262,7 +263,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | cancelJob | job_id, reason | ADMIN | 2 |
 | dashboard | from, to, branch_code? | ADMIN, VIEWER | 2 |
 
-**ค่าที่ action `me` คืน:** `{user|null, branches, areas, categories, sla, config}` โดย config คืนเฉพาะค่าที่หน้าเว็บต้องใช้ (`PHOTO_MAX_COUNT`, `PHOTO_MAX_EDGE_PX`, `VIDEO_MAX_MB`) และ `user.active` บอกว่าบัญชีถูกปิดหรือไม่
+**ค่าที่ action `me` คืน:** `{user|null, branches, areas, categories, sla, config}` โดย config คืนเฉพาะค่าที่หน้าเว็บต้องใช้ (`PHOTO_MAX_COUNT`, `PHOTO_MAX_EDGE_PX`, `VIDEO_MAX_MB`, `REPORT_PHOTO_REQUIRED` เป็น boolean) และ `user.active` บอกว่าบัญชีถูกปิดหรือไม่
 
 **ค่าที่ action อื่นคืน**
 
@@ -389,7 +390,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - **รายละเอียด**
 - **ความเร่งด่วน:** radio พร้อมป้ายเวลาจาก SLA
 - **เบอร์โทร:** เติมให้จากข้อมูลลงทะเบียน
-- **รูป:** ไม่เกิน 4 รูป
+- **รูป:** อย่างน้อย 1 รูปเมื่อ Config `REPORT_PHOTO_REQUIRED` เปิดอยู่ (ค่าเริ่มต้น บังคับตั้งแต่ 2 พ.ย. 2026) ไม่เกิน 4 รูป server ตรวจซ้ำใน `createJob` หน้าเว็บอ่านค่าจาก `me.config.REPORT_PHOTO_REQUIRED`
   - ใช้ `accept="image/*"` และ `capture="environment"`
   - ย่อด้วย canvas เป็น JPEG คุณภาพ 0.7 ให้ด้านยาวไม่เกิน 1280 px
 - **หลังส่งสำเร็จ:**

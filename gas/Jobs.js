@@ -54,6 +54,7 @@ function Jobs_me(who) {
       PHOTO_MAX_COUNT: Number(config.PHOTO_MAX_COUNT) || 4,
       PHOTO_MAX_EDGE_PX: Number(config.PHOTO_MAX_EDGE_PX) || 1280,
       VIDEO_MAX_MB: Number(config.VIDEO_MAX_MB) || 0,
+      REPORT_PHOTO_REQUIRED: Jobs_reportPhotoRequired_(config),
     },
   };
 }
@@ -113,6 +114,7 @@ function Jobs_create(actor, data) {
   const phone = Jobs_optionalText_(data.phone, Infinity);
   if (phone && !JOBS_PHONE_RE.test(phone)) throw Status_error('VALIDATION', 'เบอร์โทรไม่ถูกต้อง');
   const photos = Drive_decodePhotos(data.photos, Number(config.PHOTO_MAX_COUNT) || 4);
+  if (!photos.length && Jobs_reportPhotoRequired_(config)) throw Status_error('VALIDATION', 'กรุณาแนบรูปอย่างน้อย 1 รูป');
 
   const route = Routing_route(category, Jobs_tab_('Users'));
   const t = Status_transition(null, 'create', actor, { now: now, candidate_ids: route.candidate_ids });
@@ -505,6 +507,12 @@ function Jobs_time_(v) {
 }
 
 /** Config tab, read once per execution. */
+/** Config REPORT_PHOTO_REQUIRED (2 Nov 2026): a report needs a photo unless it is set to FALSE. */
+function Jobs_reportPhotoRequired_(config) {
+  const v = config.REPORT_PHOTO_REQUIRED;
+  return v === undefined || v === null || String(v).trim() === '' || Routing_isTrue(v);
+}
+
 function Jobs_config_() {
   if (!Jobs_config_cache_) {
     Jobs_config_cache_ = {};
