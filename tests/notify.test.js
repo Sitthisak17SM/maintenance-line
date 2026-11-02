@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Notify_flag, Notify_acceptRecipients, Notify_ackRecipients } = require('../gas/core/Notify.js');
+const { Notify_flag, Notify_acceptRecipients, Notify_ackRecipients, Notify_doneRecipients } = require('../gas/core/Notify.js');
 
 const ACTIVE = ['U_REP', 'U_TECH', 'U_ADM'];
 const tech = { userId: 'U_TECH', role: 'TECH' };
@@ -27,4 +27,18 @@ test('ack: the technician, only for a job closed with nobody at the site', () =>
   assert.deepEqual(Notify_ackRecipients(away, { userId: 'AUTO', role: 'SYSTEM' }, ACTIVE), ['U_TECH']); // auto_ack
   assert.deepEqual(Notify_ackRecipients(away, tech, ACTIVE), []); // the assignee acked it (e.g. an ADMIN)
   assert.deepEqual(Notify_ackRecipients(job({ onsite_note: 'x', assignee_id: 'U_GONE' }), reporter, ACTIVE), []);
+});
+
+test('job_done: the branch MANAGERs; the reporter only when the branch has none', () => {
+  const users = [
+    { userId: 'U_REP', role: 'STAFF', branch_code: 'PPP' },
+    { userId: 'U_MGR1', role: 'MANAGER', branch_code: 'PPP' },
+    { userId: 'U_MGR2', role: ' manager ', branch_code: 'PPP ' },
+    { userId: 'U_MGR_GIR', role: 'MANAGER', branch_code: 'GIR' },
+  ];
+  assert.deepEqual(Notify_doneRecipients(job({ branch_code: 'PPP' }), users), ['U_MGR1', 'U_MGR2']);
+  assert.deepEqual(Notify_doneRecipients(job({ branch_code: 'TAHONA' }), users), ['U_REP']); // no manager there
+  assert.deepEqual(Notify_doneRecipients(job({ branch_code: 'TAHONA', reporter_id: 'U_GONE' }), users), []);
+  // A manager who reported the job gets it once, as the manager.
+  assert.deepEqual(Notify_doneRecipients(job({ branch_code: 'GIR', reporter_id: 'U_MGR_GIR' }), users), ['U_MGR_GIR']);
 });

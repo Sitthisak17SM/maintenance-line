@@ -142,7 +142,7 @@ function Flex_jobRejected(job, ref, reason, byName) {
   });
 }
 
-/** Push to the reporter (or branch MANAGERs) when the job is closed by the technician. */
+/** Push to the branch MANAGERs (or the reporter when there are none) when the job is closed (core/Notify.js). */
 function Flex_jobDone(job, ref) {
   const id = String(job.job_id);
   const cost = Number(job.cost_total) || 0;

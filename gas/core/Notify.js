@@ -21,10 +21,25 @@ function Notify_ackRecipients(job, actor, activeIds) {
   return Notify_one_(job.assignee_id, actor, activeIds);
 }
 
+/**
+ * job_done (the "กดรับทราบงาน" card): the branch's active MANAGERs, since they acknowledge the
+ * work (พี่แตงกวา, 2 Nov 2026); the reporter when the branch has none. users: active Users as
+ * {userId, role, branch_code}. The reporter can still acknowledge from the job page.
+ */
+function Notify_doneRecipients(job, users) {
+  const branch = String((job && job.branch_code) || '').trim();
+  const managers = (users || [])
+    .filter(function (u) { return String(u.role || '').trim().toUpperCase() === 'MANAGER' && String(u.branch_code || '').trim() === branch; })
+    .map(function (u) { return String(u.userId); });
+  if (managers.length) return managers;
+  const reporter = String((job && job.reporter_id) || '').trim();
+  return (users || []).some(function (u) { return String(u.userId) === reporter; }) ? [reporter] : [];
+}
+
 function Notify_one_(userId, actor, activeIds) {
   const id = String(userId || '').trim();
   if (!id || (actor && String(actor.userId) === id)) return [];
   return (activeIds || []).indexOf(id) !== -1 ? [id] : [];
 }
 
-if (typeof module !== 'undefined') module.exports = { Notify_flag, Notify_acceptRecipients, Notify_ackRecipients };
+if (typeof module !== 'undefined') module.exports = { Notify_flag, Notify_acceptRecipients, Notify_ackRecipients, Notify_doneRecipients };

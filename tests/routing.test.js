@@ -42,7 +42,18 @@ test('nobody to send to -> empty candidates (job becomes NEW)', () => {
   assert.deepEqual(Routing_route(KITCHEN, []), { route_to: 'ADMIN', candidate_ids: [] });
 });
 
-test('route_to is read case-insensitively; anything but TECH means ADMIN', () => {
+test('BOTH: technicians and ADMINs, technicians first; ADMINs alone when no TECH is active', () => {
+  const IT = { category_code: 'IT', route_to: 'both', assignee_user_id: '' };
+  const r = Routing_route(IT, USERS);
+  assert.equal(r.route_to, 'BOTH');
+  assert.deepEqual(r.candidate_ids, Routing_idsWithRole(USERS, 'TECH').concat(Routing_idsWithRole(USERS, 'ADMIN')));
+  assert.equal(r.candidate_ids.includes('U_ADM'), true);
+  const noTech = USERS.filter((x) => String(x.role).toUpperCase() !== 'TECH');
+  assert.deepEqual(Routing_route(IT, noTech).candidate_ids, Routing_idsWithRole(noTech, 'ADMIN'));
+  assert.deepEqual(Routing_route(Object.assign({}, IT, { assignee_user_id: 'U_T2' }), USERS).candidate_ids, ['U_T2']);
+});
+
+test('route_to is read case-insensitively; anything but TECH or BOTH means ADMIN', () => {
   assert.equal(Routing_route({ route_to: ' tech ' }, USERS).route_to, 'TECH');
   assert.equal(Routing_route({ route_to: 'ADMIN (รอคอนเฟิร์ม)' }, USERS).route_to, 'ADMIN');
   assert.equal(Routing_route({ route_to: '' }, USERS).route_to, 'ADMIN');

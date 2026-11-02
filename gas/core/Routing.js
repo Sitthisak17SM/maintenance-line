@@ -3,10 +3,13 @@
 /**
  * category: a Categories row ({category_code, route_to, assignee_user_id, ...}).
  * users:    Users rows ({line_user_id, role, active, ...}).
+ * route_to: TECH, BOTH (TECH and ADMIN get the card, the first to accept takes it; added 2 Nov
+ * 2026 for IT) or anything else = ADMIN.
  * Returns {route_to, candidate_ids: [userId]}; an empty list means nobody to send to (job stays NEW).
  */
 function Routing_route(category, users) {
-  const routeTo = String((category && category.route_to) || '').trim().toUpperCase() === 'TECH' ? 'TECH' : 'ADMIN';
+  const raw = String((category && category.route_to) || '').trim().toUpperCase();
+  const routeTo = raw === 'TECH' || raw === 'BOTH' ? raw : 'ADMIN';
   const active = (users || []).filter(Routing_isActiveUser);
 
   let candidates = [];
@@ -15,7 +18,9 @@ function Routing_route(category, users) {
   if (fixed && active.some(function (u) { return Routing_userId_(u) === fixed; })) {
     candidates = [fixed];
   } else {
-    candidates = Routing_idsWithRole(active, routeTo);
+    candidates = routeTo === 'BOTH'
+      ? Routing_idsWithRole(active, 'TECH').concat(Routing_idsWithRole(active, 'ADMIN'))
+      : Routing_idsWithRole(active, routeTo);
   }
   if (!candidates.length) candidates = Routing_idsWithRole(active, 'ADMIN');
   return { route_to: routeTo, candidate_ids: candidates };

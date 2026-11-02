@@ -436,18 +436,14 @@ function Jobs_notifyNew_(job, recipients, note) {
   });
 }
 
-/** job_done goes to the reporter; if the reporter is inactive, to the branch MANAGERs. */
+/** job_done goes to the branch MANAGERs, or to the reporter when the branch has none (core/Notify.js). */
 function Jobs_notifyDone_(job) {
   Jobs_notify_('job_done', job, function () {
-    const reporterId = String(job.reporter_id || '').trim();
-    const users = Jobs_tab_('Users').filter(Routing_isActiveUser);
-    const reporterActive = users.some(function (u) { return Routing_userId_(u) === reporterId; });
-    const to = reporterActive ? [reporterId] : users
-      .filter(function (u) {
-        return String(u.role).trim().toUpperCase() === 'MANAGER' && String(u.branch_code).trim() === String(job.branch_code).trim();
-      })
-      .map(Routing_userId_);
-    Line_push(to, [Flex_jobDone(job, Jobs_ref_(job))]);
+    const users = Jobs_tab_('Users').filter(Routing_isActiveUser).map(function (u) {
+      return { userId: Routing_userId_(u), role: u.role, branch_code: u.branch_code };
+    });
+    const to = Notify_doneRecipients(job, users);
+    if (to.length) Line_push(to, [Flex_jobDone(job, Jobs_ref_(job))]);
   });
 }
 

@@ -154,17 +154,17 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | SCOFFLAWS | Scofflaws |
 | LLOYDS | Lloyd's |
 
-**Categories** (หมวดที่ยังไม่คอนเฟิร์มให้ส่งไปหา ADMIN ก่อน งานจะได้ไม่ตกหล่น)
+**Categories** (คอนเฟิร์มกับพี่แตงกวา 2 พ.ย. 2026)
 
 | category_code | name_th | route_to |
 |---|---|---|
 | ELEC | ระบบไฟฟ้า / หลอดไฟ | TECH |
 | WATER | ระบบน้ำ / ประปา / สุขภัณฑ์ | TECH |
-| AC | เครื่องปรับอากาศ | ADMIN (รอคอนเฟิร์ม) |
+| AC | เครื่องปรับอากาศ | ADMIN |
 | KITCHEN | เครื่องมือประกอบอาหาร / เครื่องจักร / เครื่องใช้ไฟฟ้า | ADMIN |
 | STRUCT | โครงสร้างร้าน / ป้าย / งานเฟอร์นิเจอร์ | TECH |
-| IT | ระบบ IT / POS / กล้องวงจรปิด | ADMIN (รอคอนเฟิร์ม) |
-| MISC | จิปาถะ อื่นๆ | ADMIN |
+| IT | ระบบ IT / POS / กล้องวงจรปิด | BOTH (อยู่ในรายการของทั้งพี่แตงกวาและช่างอาคาร) |
+| MISC | จิปาถะ อื่นๆ | ADMIN (ไม่อยู่ในคำตอบ ใช้พี่แตงกวาตามเดิม) |
 
 **SLA** (`response_hours` มาจากแท็บ KPI เดิม ส่วน `resolve_hours` เป็นค่าเสนอที่ยังต้องคอนเฟิร์ม)
 
@@ -329,7 +329,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | accept_result | กดรับงาน | คนที่กด | เปิดงาน (หรือแจ้งว่ามีคนรับไปแล้ว) | reply | 1 |
 | job_accepted | accept และ reassign ที่เลือกช่างนอก | ผู้แจ้ง (ถ้า active และไม่ใช่คนที่รับเอง) เปิดปิดด้วย Config `NOTIFY_REPORTER_ON_ACCEPT` | ดูสถานะ | push | 2 (เพิ่ม 2 พ.ย. 2026) |
 | job_rejected | reject | ADMIN | จ่ายงานใหม่ (LIFF admin) | push | 1 |
-| job_done | close | ผู้แจ้ง (ถ้า inactive ส่งให้ MANAGER ของสาขา) | รับทราบงาน (postback) · รายละเอียด | push | 1 |
+| job_done | close | MANAGER ที่ active ของสาขานั้น ถ้าสาขายังไม่มี MANAGER ส่งให้ผู้แจ้ง (เปลี่ยน 2 พ.ย. 2026 พี่แตงกวา: ผู้จัดการร้านเป็นคนรับทราบ ผู้แจ้งยังกดรับทราบจากหน้างานได้) | รับทราบงาน (postback) · รายละเอียด | push | 1 |
 | ack_result | ack | คนที่กด | — | reply | 1 |
 | job_acked | ack และ auto_ack ของงานที่ปิดแบบ "ไม่มีคนอยู่หน้างาน" (มี `onsite_note`) | assignee (ถ้า active และไม่ใช่คนที่กดรับทราบเอง) เปิดปิดด้วย Config `NOTIFY_TECH_ON_ACK` | เปิดงาน | push | 2 (เพิ่ม 2 พ.ย. 2026) |
 | ext_request | request_ext | ADMIN | อนุมัติ · ไม่อนุมัติ (postback) | push | 2 |
@@ -422,6 +422,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 category = Categories[category_code]
 if category.assignee_user_id           -> candidates = [that user]
 else if category.route_to == 'TECH'    -> candidates = active Users where role == 'TECH'
+else if category.route_to == 'BOTH'    -> candidates = active TECH, then active ADMIN
 else                                   -> candidates = active Users where role == 'ADMIN'
 if candidates is empty                 -> candidates = active ADMINs
                                            (and status = NEW if there is no ADMIN either)
@@ -429,7 +430,7 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 ```
 
 - ถ้า `assignee_user_id` ไม่มีในแท็บ Users หรือ inactive ให้ใช้กฎตาม route_to แทน งานจะได้ไม่หาย
-- `route_to` ไม่สนตัวพิมพ์ ค่าอื่นที่ไม่ใช่ TECH ถือเป็น ADMIN และ `active` ที่เป็นช่องว่างถือว่า FALSE
+- `route_to` ไม่สนตัวพิมพ์ ค่าอื่นที่ไม่ใช่ TECH หรือ BOTH ถือเป็น ADMIN (BOTH เพิ่ม 2 พ.ย. 2026 สำหรับหมวด IT ที่ทั้งช่างอาคารและพี่แตงกวารับได้) และ `active` ที่เป็นช่องว่างถือว่า FALSE
 - ส่งการ์ดให้ candidate ทุกคน คนแรกที่กดรับได้งาน
 - ตอนรับงานต้องตรวจซ้ำภายใต้ lock ว่าสถานะยังเป็น ASSIGNED อยู่
 - `forward` คือช่างอาคารส่งงานต่อให้ ADMIN เพื่อหาช่างนอก ไม่นับเป็นการปฏิเสธ
@@ -526,7 +527,7 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 | รอช่างรับงาน | accept | `created_at` → `accepted_at` |
 | ไปถึงหน้างาน | travel | `accepted_at` → `checkin_at` (เฉพาะงานที่กดเข้าหน้างาน) |
 | ซ่อม | repair | `checkin_at` → `done_at` ถ้าไม่ได้กดเข้าหน้างานใช้ `accepted_at` → `done_at` (เวลาเดินทางรวมอยู่ในนี้) |
-| รอผู้แจ้งรับทราบ | ack | `done_at` → `closed_at` (รวมการรับทราบอัตโนมัติ) |
+| รอร้านรับทราบ | ack | `done_at` → `closed_at` (รวมการรับทราบอัตโนมัติ) |
 | แจ้งจนซ่อมเสร็จ | total | `created_at` → `done_at` |
 
 - **ค่ากลาง (median) ไม่ใช่ค่าเฉลี่ย:** งานที่ค้างนานไม่กี่งานจะไม่ดึงตัวเลขขึ้น ช่วงที่ยังไม่เกิดหรือเวลาย้อนกลับไม่นับ
