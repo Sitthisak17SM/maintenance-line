@@ -77,19 +77,30 @@
     let loadSeq = 0;
     async function loadList(list) {
       const seq = ++loadSeq; // ignore answers from tabs the user already left
-      clear(list).appendChild(el('div', { class: 'center' }, el('div', { class: 'spinner' })));
       const filter = FILTERS.find(function (f) { return f.key === state.filter; });
+      const branch = state.scope === 'all' ? state.branch : '';
+      // The last answer for this tab shows at once (marked as updating) while the server answers.
+      const cacheName = ['list', state.scope, state.filter, branch].join(':');
+      const cached = pageCacheGet(cacheName);
+      if (cached) drawList(list, cached, true);
+      else clear(list).appendChild(el('div', { class: 'center' }, el('div', { class: 'spinner' })));
       try {
-        const res = await api('listJobs', { scope: state.scope, statuses: filter.statuses, branch_code: state.scope === 'all' ? state.branch : '' });
+        const res = await api('listJobs', { scope: state.scope, statuses: filter.statuses, branch_code: branch });
         if (seq !== loadSeq) return;
-        clear(list);
-        if (!res.jobs.length) return list.appendChild(el('p', { class: 'center muted' }, 'ไม่มีงาน'));
-        res.jobs.forEach(function (j) { list.appendChild(item(j)); });
-        if (res.total > res.jobs.length) list.appendChild(el('p', { class: 'muted' }, 'แสดง ' + res.jobs.length + ' จาก ' + res.total + ' งานล่าสุด'));
+        pageCacheSet(cacheName, res);
+        drawList(list, res, false);
       } catch (err) {
         if (seq !== loadSeq) return;
         clear(list).appendChild(el('p', { class: 'err' }, errorText(err)));
       }
+    }
+
+    function drawList(list, res, stale) {
+      clear(list);
+      if (stale) list.appendChild(el('p', { class: 'muted', style: 'font-size:0.85rem;margin:0 0 8px' }, 'กำลังอัปเดต…'));
+      if (!res.jobs.length) return list.appendChild(el('p', { class: 'center muted' }, 'ไม่มีงาน'));
+      res.jobs.forEach(function (j) { list.appendChild(item(j)); });
+      if (res.total > res.jobs.length) list.appendChild(el('p', { class: 'muted' }, 'แสดง ' + res.jobs.length + ' จาก ' + res.total + ' งานล่าสุด'));
     }
 
     function item(j) {

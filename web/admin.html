@@ -25,20 +25,30 @@
     const JOB_ID = param('id');
 
     (async function () {
-      ME = await startPage();
+      let first = null;
+      ME = await startPage({
+        onToken: function () { // in parallel with `me`; the server rejects non-admins on its own
+          first = JOB_ID ? api('getJob', { job_id: JOB_ID }) : queueRequests();
+          first.catch(function () {});
+        },
+      });
       if (!ME) return;
       if (ME.user.role !== 'ADMIN') return showError(new Error('หน้านี้สำหรับ Admin เท่านั้น'));
-      if (JOB_ID) await loadJob(); else await loadQueue();
+      if (JOB_ID) await loadJob(first); else await loadQueue(first);
     })();
 
+    function queueRequests() {
+      return Promise.all([
+        api('listJobs', { scope: 'all', statuses: ['NEW', 'REJECTED', 'ASSIGNED'] }),
+        api('listJobs', { scope: 'all', statuses: ['ACCEPTED', 'IN_PROGRESS'] }),
+      ]);
+    }
+
     /** Without ?id=: jobs waiting for someone to take them. */
-    async function loadQueue() {
+    async function loadQueue(pending) {
       showLoading();
       try {
-        const [waiting, working] = await Promise.all([
-          api('listJobs', { scope: 'all', statuses: ['NEW', 'REJECTED', 'ASSIGNED'] }),
-          api('listJobs', { scope: 'all', statuses: ['ACCEPTED', 'IN_PROGRESS'] }),
-        ]);
+        const [waiting, working] = await (pending || queueRequests());
         const ext = working.jobs.filter(function (j) { return j.ext_pending; });
         const item = function (j, extra) {
           return el('a', { class: 'card job-item', href: 'admin.html?id=' + encodeURIComponent(j.job_id) },
@@ -61,11 +71,11 @@
       }
     }
 
-    async function loadJob() {
+    async function loadJob(pending) {
       showLoading();
       let data;
       try {
-        data = await api('getJob', { job_id: JOB_ID });
+        data = await (pending || api('getJob', { job_id: JOB_ID }));
       } catch (err) {
         return showError(err);
       }

@@ -62,6 +62,8 @@ async function startPage(options) {
   try {
     const idToken = await initLiff();
     if (!idToken) return null;
+    // Lets a page start its own first request now, alongside `me`, instead of after it.
+    if (opts.onToken) opts.onToken();
     const me = await loadMe_(opts.fresh);
     if (opts.requireUser !== false && !me.user) {
       location.replace('register.html?next=' + encodeURIComponent(location.pathname.split('/').pop() + location.search));
@@ -78,12 +80,14 @@ async function startPage(options) {
   }
 }
 
-// Every Apps Script call takes about 2 s, so a registered user's `me` is kept in this browser for
-// ME_CACHE_MS and reused by the next page (one call instead of two). It only shapes the UI: the
-// server checks role and permissions on every action. A cached copy older than ME_REFRESH_MS is
-// refreshed in the background for the page after this one.
-const ME_CACHE_MS = 10 * 60 * 1000;
+// Every Apps Script call takes about 2 s even when it does nothing (most of it is Google's
+// redirect), so a registered user's `me` is kept in this browser for ME_CACHE_MS and reused by
+// the next page. It only shapes the UI: the server checks role and permissions on every action.
+// A cached copy older than ME_REFRESH_MS is refreshed in the background for the page after this
+// one, so a role change shows on the second page opened after it.
+const ME_CACHE_MS = 12 * 3600 * 1000;
 const ME_REFRESH_MS = 2 * 60 * 1000;
+const PAGE_CACHE_MS = 24 * 3600 * 1000;
 
 function meCacheKey_() {
   const token = liff.getDecodedIDToken();
@@ -115,6 +119,30 @@ function saveMe_(key, me) {
     else if (key) localStorage.removeItem(key);
   } catch (err) {
     // Storage can be blocked (private mode); the page just calls `me` every time.
+  }
+}
+
+/**
+ * A page's last answer for this user (e.g. a job list), shown at once while the fresh one loads.
+ * null when missing, older than PAGE_CACHE_MS, or storage is blocked.
+ */
+function pageCacheGet(name) {
+  try {
+    const key = meCacheKey_();
+    const hit = key ? JSON.parse(localStorage.getItem(key + ':' + name) || 'null') : null;
+    const age = hit ? Date.now() - hit.at : Infinity;
+    return age >= 0 && age < PAGE_CACHE_MS ? hit.value : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function pageCacheSet(name, value) {
+  try {
+    const key = meCacheKey_();
+    if (key) localStorage.setItem(key + ':' + name, JSON.stringify({ at: Date.now(), value: value }));
+  } catch (err) {
+    // Full or blocked storage: the page just waits for the server next time.
   }
 }
 

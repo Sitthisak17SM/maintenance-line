@@ -65,6 +65,22 @@ const API_ACTIONS = {
   },
 };
 
+// Job actions also return the getJob view as `detail`, so job.html redraws without a second
+// request (each one costs about 2 s, PLAN §6).
+const API_DETAIL_ACTIONS = ['acceptJob', 'rejectJob', 'forwardJob', 'reassignJob', 'checkin', 'closeJob', 'ackJob',
+  'requestExtension', 'decideExtension', 'setPriority', 'cancelJob'];
+
+/** Adds `detail` when the caller may still view the job; otherwise the page reloads as before. */
+function Api_withDetail_(req, result) {
+  if (!result || typeof result !== 'object') return result;
+  try {
+    result.detail = Jobs_get(Api_actor_(req), result.job_id || Api_jobId_(req));
+  } catch (err) {
+    // e.g. a technician who just rejected the job may no longer see it
+  }
+  return result;
+}
+
 /** Registered, active user behind the request's ID token. */
 function Api_actor_(req) {
   return Jobs_actor(Line_verifyIdToken(req.idToken).userId);
@@ -89,7 +105,8 @@ function Api_handle(e) {
   }
   if (!req.data || typeof req.data !== 'object') req.data = {};
   try {
-    return Api_json_({ ok: true, data: handler(req) });
+    const data = handler(req);
+    return Api_json_({ ok: true, data: API_DETAIL_ACTIONS.indexOf(req.action) !== -1 ? Api_withDetail_(req, data) : data });
   } catch (err) {
     if (API_ERROR_CODES.indexOf(err.code) !== -1) {
       return Api_json_({ ok: false, error: { code: err.code, message: err.message } });

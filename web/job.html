@@ -24,21 +24,34 @@
     const JOB_ID = param('id');
 
     (async function () {
-      ME = await startPage();
+      let first = null;
+      ME = await startPage({
+        onToken: function () {
+          if (!JOB_ID) return;
+          first = api('getJob', { job_id: JOB_ID }); // in parallel with `me`
+          first.catch(function () {}); // awaited in load(); this only silences an early bail-out
+        },
+      });
       if (!ME) return;
       if (!JOB_ID) return showError(new Error('ไม่ได้ระบุเลขงาน'));
-      await load(param('do'));
+      await load(param('do'), first);
     })();
 
-    async function load(openForm) {
+    async function load(openForm, pending) {
       showLoading();
       let data;
       try {
-        data = await api('getJob', { job_id: JOB_ID });
+        data = await (pending || api('getJob', { job_id: JOB_ID }));
       } catch (err) {
         return showError(err);
       }
       render(view(data, openForm));
+    }
+
+    /** Job actions return the fresh getJob view (`detail`), which saves a second call. */
+    function after(result) {
+      if (result && result.detail) { render(view(result.detail)); window.scrollTo(0, 0); }
+      else load();
     }
 
     function view(data, openForm) {
@@ -124,7 +137,7 @@
         b.textContent = label;
         b.addEventListener('click', async function () {
           const ok = await busy(b, msg, 'กำลังบันทึก…', function () { return api(apiAction, { job_id: job.job_id }); });
-          if (ok) load();
+          if (ok) after(ok);
         });
         buttons.push(b);
       }
@@ -174,7 +187,7 @@
         const ok = await busy(submit, msg, 'กำลังส่ง…', function () {
           return api('requestExtension', { job_id: job.job_id, reason: reason.value, new_due_at: at.toISOString() });
         });
-        if (ok) load();
+        if (ok) after(ok);
       });
       return form;
     }
@@ -200,7 +213,7 @@
         e.preventDefault();
         if (!reason.value.trim()) return invalid(msg, 'กรุณากรอกเหตุผล', reason);
         const ok = await busy(submit, msg, 'กำลังบันทึก…', function () { return api(apiAction, { job_id: job.job_id, reason: reason.value }); });
-        if (ok) load();
+        if (ok) after(ok);
       });
       setTimeout(function () { reason.focus(); }, 0);
       return form;
@@ -267,7 +280,7 @@
             photos: photos.photos(), onsite_note: nobody.checked ? onsiteNote.value : '',
           });
         });
-        if (ok) load();
+        if (ok) after(ok);
       });
       return form;
     }
