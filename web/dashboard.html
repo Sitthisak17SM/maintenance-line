@@ -27,6 +27,8 @@
       --money: #9c5326;
       --critical: #b42318;
       --s-open: #d0623a; --s-done: #d9a441; --s-closed: #138a5e; --s-cancelled: #8a5cb0;
+      /* Job stages, in order; validated as an adjacent set (amber below 3:1, so tiles and a table carry the numbers). */
+      --t-accept: #2a78d6; --t-travel: #e0a020; --t-repair: #3a8a5a; --t-ack: #a35ca8;
       max-width: 1120px;
       padding: 20px 16px 48px;
       background: var(--paper);
@@ -90,6 +92,20 @@
     .meter.warn i { background: var(--s-open); }
     .kpi-note { margin: 0; font-size: 0.8rem; color: var(--ink-2); }
 
+    /* Stage times ------------------------------------------------------------ */
+    .stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; counter-reset: stage; }
+    .stage .l { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-2); }
+    .stage .l::before { counter-increment: stage; content: counter(stage); flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px;
+      background: var(--sw); color: #fff; font-size: 0.7rem; font-weight: 700; display: grid; place-items: center; }
+    .stage .n { font-size: 1.5rem; font-weight: 700; line-height: 1.15; margin-top: 2px; }
+    .stage .c { font-size: 0.75rem; color: var(--ink-2); }
+    .stage-sum { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .stage-sum .n { font-size: 1.25rem; font-weight: 700; }
+    .stage-sum .l { font-size: 0.85rem; color: var(--ink-2); }
+    .callout { margin: 12px 0 0; font-size: 0.85rem; color: var(--ink-2); background: #f6f4f1; border-radius: 10px; padding: 8px 12px; }
+    .seg.small { display: inline-flex; margin: 16px 0 10px; }
+    .seg.small button { flex: none; padding: 6px 14px; min-height: 36px; }
+
     /* Charts ----------------------------------------------------------------- */
     .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .grid .panel { margin: 0; min-width: 0; }
@@ -138,6 +154,9 @@
       .now .fig .l { font-size: 0.95rem; margin: 0; }
       .grid { grid-template-columns: 1fr 1fr; }
       .grid .full { grid-column: 1 / -1; }
+      .stages { grid-template-columns: repeat(4, 1fr); }
+      .stage + .stage { border-left: 1px solid var(--line); padding-left: 12px; }
+      .stage-sum { grid-template-columns: 1fr 1.6fr; align-items: end; }
     }
   </style>
 </head>
@@ -159,13 +178,21 @@
       { key: 'closed', label: 'ปิดแล้ว', color: '--s-closed', statuses: ['CLOSED'] },
       { key: 'cancelled', label: 'ยกเลิก', color: '--s-cancelled', statuses: ['CANCELLED'] },
     ];
+    const STAGES = [
+      { key: 'accept', label: 'รอช่างรับงาน', short: 'รอช่าง', color: '--t-accept', note: 'แจ้งซ่อม → ช่างกดรับ' },
+      { key: 'travel', label: 'ไปถึงหน้างาน', short: 'ไปถึง', color: '--t-travel', note: 'กดรับ → กดเข้าหน้างาน' },
+      { key: 'repair', label: 'ซ่อม', short: 'ซ่อม', color: '--t-repair', note: 'เข้าหน้างาน → ปิดงาน' },
+      { key: 'ack', label: 'รอผู้แจ้งรับทราบ', short: 'รอรับทราบ', color: '--t-ack', note: 'ปิดงาน → กดรับทราบ' },
+    ];
     const RANGES = [{ days: 30, label: '30 วัน' }, { days: 90, label: '90 วัน' }, { days: 365, label: '1 ปี' }, { days: 0, label: 'ทั้งหมด' }];
     const FONT = '"Anuphan", system-ui, "Noto Sans Thai", sans-serif';
     const ICONS = { alert: 'M12 4 2.5 20h19L12 4Zm0 6v4.5m0 3v.01', check: 'M20 6 9 17l-5-5' };
     let ME = null;
     let charts = [];
     let loaded = false;
-    const state = { days: 90, from: '', to: '', branch_code: '', category_code: '', tech: '', techs: [] };
+    let lastData = null;
+    let timingChart = null;
+    const state = { days: 90, from: '', to: '', branch_code: '', category_code: '', tech: '', techs: [], timeBy: 'tech' };
 
     (async function () {
       ME = await startPage();
@@ -218,12 +245,14 @@
         return;
       }
       state.techs = data.techs;
+      lastData = data;
       charts.forEach(function (c) { c.destroy(); });
       charts = [];
-      render(controls(), el('div', { class: 'body' }, overview(data), chartsGrid(data), tables(data)));
+      render(controls(), el('div', { class: 'body' }, overview(data), timingSection(data), chartsGrid(data), tables(data)));
       app.classList.remove('loading');
       loaded = true;
       drawCharts(data);
+      drawTiming(data);
     }
 
     // --- filters ------------------------------------------------------------------------------
@@ -315,6 +344,83 @@
       return svg;
     }
 
+    // --- stage times (PLAN §13) -----------------------------------------------------------------
+
+    function timingSection(d) {
+      const t = d.timing;
+      const head = [el('h2', {}, 'ใช้เวลาแต่ละขั้นตอนเท่าไหร่'),
+        el('p', { class: 'sub' }, 'ค่ากลางของงานที่แจ้งในช่วงที่เลือก คือครึ่งหนึ่งของงานใช้เวลาน้อยกว่านี้ (ไม่ใช้ค่าเฉลี่ย เพราะงานที่ค้างนานไม่กี่งานจะดึงตัวเลขขึ้น)')];
+      if (!STAGES.some(function (s) { return t.stages[s.key].jobs; })) {
+        return el('section', { class: 'panel', id: 'timing' }, head,
+          el('p', { class: 'empty' }, 'ยังไม่มีข้อมูลเวลา งานจากระบบเดิมไม่มีเวลากดรับงาน ตัวเลขจะขึ้นเมื่อมีงานใหม่ผ่านระบบ'));
+      }
+      const noCheckin = t.checkin_rate === null ? 0 : Math.round((1 - t.checkin_rate) * 100);
+      const rows = timingRows(d);
+      return el('section', { class: 'panel', id: 'timing' }, head,
+        el('ol', { class: 'stages' }, STAGES.map(function (s) {
+          const st = t.stages[s.key];
+          return el('li', { class: 'stage', style: '--sw: var(' + s.color + ')' },
+            el('div', { class: 'l' }, s.label),
+            el('div', { class: 'n' }, dur(st.median_hours)),
+            el('div', { class: 'c' }, s.note),
+            el('div', { class: 'c' }, 'จาก ' + st.jobs.toLocaleString('th-TH') + ' งาน'));
+        })),
+        noCheckin > 0 ? el('p', { class: 'callout' }, 'งานที่เสร็จแล้ว ' + noCheckin + '% ช่างไม่ได้กดเข้าหน้างาน เวลาเดินทางของงานเหล่านั้นจึงรวมอยู่ในช่วง "ซ่อม"') : null,
+        el('div', { class: 'stage-sum' },
+          el('div', {}, el('div', { class: 'n' }, dur(t.stages.total.median_hours)),
+            el('div', { class: 'l' }, 'แจ้งจนซ่อมเสร็จ (จาก ' + t.stages.total.jobs.toLocaleString('th-TH') + ' งาน)')),
+          meter('ช่างกดรับภายใน ' + dur(t.accept_target_hours), t.accept_on_time_rate,
+            'จาก ' + t.accept_on_time_jobs.toLocaleString('th-TH') + ' งาน งานที่ยังไม่มีคนรับและรอเกินเป้าแล้วนับว่าไม่ทัน ปรับเป้าได้ที่แท็บ Config (ACCEPT_TARGET_HOURS)')),
+        el('div', { class: 'seg small', role: 'group', 'aria-label': 'แยกกราฟตาม' }, [['tech', 'ตามช่าง'], ['branch', 'ตามร้าน']].map(function (o) {
+          return el('button', { type: 'button', 'aria-pressed': String(state.timeBy === o[0]), onclick: function () { switchTiming(o[0]); } }, o[1]);
+        })),
+        el('div', { class: 'canvas', style: 'height:' + (72 + rows.length * 38) + 'px' }, el('canvas', { id: 'c-time', role: 'img', 'aria-label': 'เวลาแต่ละขั้นตอน' + (state.timeBy === 'tech' ? 'ตามช่าง' : 'ตามร้าน') })),
+        el('details', {}, el('summary', {}, 'ดูเป็นตาราง'), el('div', { class: 'scroll' }, tableTiming(rows))));
+    }
+
+    /** Rows for the stage chart, busiest first; unnamed technicians last. */
+    function timingRows(d) {
+      const byTech = state.timeBy === 'tech';
+      return (byTech ? d.timing.by_tech : d.timing.by_branch)
+        .filter(function (r) { return STAGES.some(function (s) { return r[s.key] !== null; }); })
+        .sort(function (a, b) {
+          if (byTech && (a.tech === '(ไม่ระบุ)') !== (b.tech === '(ไม่ระบุ)')) return a.tech === '(ไม่ระบุ)' ? 1 : -1;
+          return b.jobs - a.jobs;
+        })
+        .map(function (r) { return { name: byTech ? techLabel(r.tech) : branchName(r.branch), row: r }; });
+    }
+
+    function tableTiming(rows) {
+      return table([state.timeBy === 'tech' ? 'ช่าง / ช่างนอก' : 'ร้าน', 'งาน'].concat(STAGES.map(function (s) { return s.label; }), ['แจ้งจนเสร็จ']),
+        rows.map(function (r) {
+          return [r.name, r.row.jobs.toLocaleString('th-TH')].concat(STAGES.map(function (s) { return dur(r.row[s.key]); }), [dur(r.row.total)]);
+        }), [1, 2, 3, 4, 5, 6], [null, 'งาน'].concat(STAGES.map(function (s) { return s.short; }), ['แจ้งจนเสร็จ']));
+    }
+
+    function switchTiming(by) {
+      state.timeBy = by;
+      if (timingChart) {
+        timingChart.destroy();
+        charts = charts.filter(function (c) { return c !== timingChart; });
+      }
+      $('#timing').replaceWith(timingSection(lastData));
+      drawTiming(lastData);
+    }
+
+    function drawTiming(d) {
+      const rows = timingRows(d);
+      timingChart = bars('c-time', rows.map(function (r) { return r.name; }), STAGES.map(function (s) {
+        return { label: s.label, color: cssVar(s.color), values: rows.map(function (r) { return r.row[s.key]; }) };
+      }).filter(function (s) { return s.values.some(function (v) { return v !== null; }); }), {
+        horizontal: true, legend: true, unit: '', format: dur, noTotal: true,
+        axisFormat: function (v) { return v ? v.toLocaleString('th-TH') + ' ชม.' : '0'; },
+        breakdown: function (i) {
+          const r = rows[i].row;
+          return ['จาก ' + r.jobs.toLocaleString('th-TH') + ' งาน' + (r.total === null ? '' : ' · แจ้งจนเสร็จ ' + dur(r.total))];
+        },
+      });
+    }
+
     // --- charts and tables layout -------------------------------------------------------------
 
     function chartsGrid(d) {
@@ -380,6 +486,13 @@
     const thDay = function (s) {
       const p = s.split('-');
       return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' });
+    };
+    /** Hours as minutes, hours or days, whichever reads naturally. */
+    const dur = function (h) {
+      if (h === null || h === undefined) return '-';
+      if (h < 1) return Math.round(h * 60) + ' นาที';
+      if (h < 48) return (Math.round(h * 10) / 10).toLocaleString('th-TH') + ' ชม.';
+      return (Math.round(h / 2.4) / 10).toLocaleString('th-TH') + ' วัน';
     };
     const sum = function (rows, pick) { return rows.reduce(function (s, r) { return s + pick(r); }, 0); };
 
@@ -476,7 +589,7 @@
       id: 'valueLabels',
       afterDatasetsDraw: function (chart, args, opts) {
         const metas = chart.getSortedVisibleDatasetMetas();
-        if (!metas.length) return;
+        if (opts.off || !metas.length) return;
         const horizontal = chart.options.indexAxis === 'y';
         const ctx = chart.ctx;
         ctx.save();
@@ -534,9 +647,9 @@
       const horizontal = !!o.horizontal;
       const grid = cssVar('--line');
       const ink = cssVar('--ink');
-      const valueAxis = { stacked: true, beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { precision: 0, maxTicksLimit: 5, callback: o.format ? function (v) { return o.format(v); } : undefined } };
+      const valueAxis = { stacked: true, beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { precision: 0, maxTicksLimit: 5, callback: o.axisFormat || o.format || undefined } };
       const catAxis = { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: ink, autoSkip: false } };
-      charts.push(new Chart(canvas, {
+      const chart = new Chart(canvas, {
         type: 'bar',
         plugins: [valueLabels],
         data: {
@@ -555,19 +668,21 @@
           layout: { padding: horizontal ? { right: 40 } : { top: 20 } },
           scales: horizontal ? { x: valueAxis, y: catAxis } : { x: catAxis, y: valueAxis },
           plugins: {
-            valueLabels: { format: o.format },
+            valueLabels: { format: o.format, off: !!o.noTotal },
             legend: o.legend ? { position: 'top', align: 'start', labels: { color: ink, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rectRounded', padding: 14 } } : { display: false },
             tooltip: {
               filter: function (ctx) { return !!ctx.raw; },
               callbacks: {
                 title: function (items) { return o.titles ? o.titles[items[0].dataIndex] : items[0].label; },
-                label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + (o.format ? o.format(ctx.raw) : ctx.raw.toLocaleString('th-TH')) + ' ' + o.unit; },
+                label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + (o.format ? o.format(ctx.raw) : ctx.raw.toLocaleString('th-TH')) + (o.unit ? ' ' + o.unit : ''); },
                 afterBody: o.breakdown ? function (items) { return o.breakdown(items[0].dataIndex); } : undefined,
               },
             },
           },
         },
-      }));
+      });
+      charts.push(chart);
+      return chart;
     }
   </script>
 </body>

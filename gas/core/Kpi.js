@@ -7,9 +7,15 @@ const KPI_HOUR_MS = 3600 * 1000;
 const KPI_LIST_MAX = 20;
 const KPI_REPEAT_DAYS = 7;
 const KPI_NO_TECH = '(ไม่ระบุ)';
+const KPI_STAGES = ['accept', 'travel', 'repair', 'ack', 'total'];
+const KPI_ACCEPT_TARGET_HOURS = 1; // when Config ACCEPT_TARGET_HOURS is blank or missing
+// accepted_at is not cleared when a job is sent back out (reject, forward, reassign), so it only
+// counts once the job is accepted again.
+const KPI_UNACCEPTED = ['NEW', 'ASSIGNED', 'REJECTED'];
 
 /**
- * jobs: Jobs rows. opts: {now: Date, from?: Date, to?: Date, branch_code?, category_code?, tech?}.
+ * jobs: Jobs rows. opts: {now: Date, from?: Date, to?: Date, branch_code?, category_code?, tech?,
+ * accept_target_hours?}.
  * Filters by branch/category/tech apply everywhere. The date range (on created_at, `to` inclusive
  * to the end of that day) applies to the period figures; "now" figures (open, overdue,
  * cost this month) ignore it. Jobs without created_at (migrated, PLAN §14) only count when no
@@ -64,6 +70,7 @@ function Kpi_compute(jobs, opts) {
       return [Kpi_month_(Kpi_time_(j.created_at)), String(j.category_code || '')];
     }, ['month', 'category']),
     by_tech: Kpi_byTech_(period),
+    timing: Kpi_timing_(period, now, opts.accept_target_hours),
     cost_by_branch_month: Kpi_costByBranchMonth_(base, from, toEnd),
     overdue_list: overdue
       .sort(function (a, b) { return Kpi_time_(a.due_at) - Kpi_time_(b.due_at); })
@@ -97,6 +104,96 @@ function Kpi_responseHours(j) {
 function Kpi_avgResponse_(jobs) {
   const hours = jobs.map(Kpi_responseHours).filter(function (h) { return h !== null; });
   return hours.length ? Kpi_round_(hours.reduce(function (s, h) { return s + h; }, 0) / hours.length, 1) : null;
+}
+
+/**
+ * Hours spent in each stage of one job (PLAN §13), null where the stage has not happened:
+ * accept = reported -> accepted, travel = accepted -> check-in, repair = check-in -> done
+ * (accepted -> done when there was no check-in, so travel is inside it), ack = done -> closed,
+ * total = reported -> done.
+ */
+function Kpi_stageHours(j) {
+  const c = Kpi_time_(j.created_at);
+  const a = KPI_UNACCEPTED.indexOf(String(j.status)) === -1 ? Kpi_time_(j.accepted_at) : null;
+  const k = Kpi_time_(j.checkin_at);
+  const d = Kpi_time_(j.done_at);
+  const checkedIn = a !== null && k !== null && k >= a;
+  return {
+    accept: Kpi_span_(c, a),
+    travel: checkedIn ? Kpi_span_(a, k) : null,
+    repair: Kpi_span_(checkedIn ? k : a, d),
+    ack: Kpi_span_(d, Kpi_time_(j.closed_at)),
+    total: Kpi_span_(c, d),
+  };
+}
+
+function Kpi_span_(start, end) {
+  return start === null || end === null || end < start ? null : (end - start) / KPI_HOUR_MS;
+}
+
+/**
+ * Stage medians (a few stuck jobs would drag an average), the share accepted within the target
+ * (open jobs still waiting past it count as misses), the share of finished jobs that had a
+ * check-in, and the same medians per technician and per branch.
+ */
+function Kpi_timing_(jobs, now, targetHours) {
+  const target = Number(targetHours) > 0 ? Number(targetHours) : KPI_ACCEPT_TARGET_HOURS;
+  const rows = jobs.map(function (j) { return { job: j, h: Kpi_stageHours(j) }; });
+  let hit = 0;
+  let counted = 0;
+  rows.forEach(function (r) {
+    if (r.h.accept !== null) {
+      counted++;
+      if (r.h.accept <= target) hit++;
+      return;
+    }
+    const c = Kpi_time_(r.job.created_at);
+    if (c !== null && KPI_UNACCEPTED.indexOf(String(r.job.status)) !== -1 && now.getTime() - c > target * KPI_HOUR_MS) counted++;
+  });
+  const worked = rows.filter(function (r) { return r.h.repair !== null; });
+  return {
+    accept_target_hours: target,
+    stages: Kpi_stageMedians_(rows, true),
+    accept_on_time_rate: Kpi_rate_(hit, counted),
+    accept_on_time_jobs: counted,
+    checkin_rate: Kpi_rate_(worked.filter(function (r) { return r.h.travel !== null; }).length, worked.length),
+    by_tech: Kpi_timingBy_(rows, 'tech', Kpi_tech),
+    by_branch: Kpi_timingBy_(rows, 'branch', function (j) { return String(j.branch_code || ''); }),
+  };
+}
+
+/** {stage: {median_hours, jobs}} when withCounts, else {stage: median_hours}. */
+function Kpi_stageMedians_(rows, withCounts) {
+  const out = {};
+  KPI_STAGES.forEach(function (s) {
+    const hours = rows.map(function (r) { return r.h[s]; }).filter(function (h) { return h !== null; });
+    const m = Kpi_median_(hours);
+    out[s] = withCounts ? { median_hours: m, jobs: hours.length } : m;
+  });
+  return out;
+}
+
+/** [{<key>, jobs, accept, travel, repair, ack, total}] for groups with at least one timed stage. */
+function Kpi_timingBy_(rows, key, keyFn) {
+  const groups = {};
+  rows.forEach(function (r) {
+    if (!KPI_STAGES.some(function (s) { return r.h[s] !== null; })) return;
+    const k = keyFn(r.job);
+    (groups[k] = groups[k] || []).push(r);
+  });
+  return Object.keys(groups).sort().map(function (k) {
+    const row = {};
+    row[key] = k;
+    row.jobs = groups[k].length;
+    return Object.assign(row, Kpi_stageMedians_(groups[k], false));
+  });
+}
+
+function Kpi_median_(xs) {
+  if (!xs.length) return null;
+  const s = xs.slice().sort(function (a, b) { return a - b; });
+  const mid = Math.floor(s.length / 2);
+  return Kpi_round_(s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2, 2);
 }
 
 /** Lead Time KPI: done on or before due_at, over jobs that are done and had a due date. */
@@ -203,4 +300,4 @@ function Kpi_time_(v) {
   return isNaN(t) ? null : t;
 }
 
-if (typeof module !== 'undefined') module.exports = { Kpi_compute, Kpi_tech, Kpi_responseHours };
+if (typeof module !== 'undefined') module.exports = { Kpi_compute, Kpi_tech, Kpi_responseHours, Kpi_stageHours };

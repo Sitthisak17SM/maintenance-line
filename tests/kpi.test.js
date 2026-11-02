@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Kpi_compute, Kpi_tech, Kpi_responseHours } = require('../gas/core/Kpi.js');
+const { Kpi_compute, Kpi_tech, Kpi_responseHours, Kpi_stageHours } = require('../gas/core/Kpi.js');
 
 const H = 3600 * 1000;
 const NOW = new Date('2026-11-20T05:00:00Z'); // 20 Nov 12:00 Bangkok
@@ -113,6 +113,36 @@ test('repeat_candidates: same branch + area + category within 7 days after the e
   assert.deepEqual(Kpi_compute([first, tooLate], { now: NOW }).repeat_candidates, []);
   const noArea = [job('N1', { area: '', closed_at: at('2026-11-05T00:00:00Z') }), job('N2', { area: '', created_at: at('2026-11-06T00:00:00Z') })];
   assert.deepEqual(Kpi_compute(noArea, { now: NOW }).repeat_candidates, []);
+});
+
+test('timing: stage medians, accepted within target, check-in share', () => {
+  const t = Kpi_compute(JOBS, { now: NOW }).timing;
+  // A: accept 1h, travel 1h, repair 46h, ack 1h, total 48h. B (no check-in): accept 4h, repair
+  // 236h (accepted -> done), ack 24h, total 240h. C has no acceptance, D/E/F no stage at all.
+  assert.deepEqual(t.stages, {
+    accept: { median_hours: 2.5, jobs: 2 }, travel: { median_hours: 1, jobs: 1 }, repair: { median_hours: 141, jobs: 2 },
+    ack: { median_hours: 12.5, jobs: 2 }, total: { median_hours: 144, jobs: 2 },
+  });
+  assert.equal(t.accept_target_hours, 1);
+  // A in time; B late; D still waiting 10 days counts as a miss; E (cancelled) is not counted.
+  assert.equal(t.accept_on_time_jobs, 3);
+  assert.equal(t.accept_on_time_rate, 0.3333);
+  assert.equal(t.checkin_rate, 0.5);
+  assert.deepEqual(t.by_tech, [{ tech: 'ช่างตุน', jobs: 2, accept: 2.5, travel: 1, repair: 141, ack: 12.5, total: 144 }]);
+  assert.deepEqual(t.by_branch.map((x) => x.branch), ['PPP']);
+  assert.equal(Kpi_compute(JOBS, { now: NOW, accept_target_hours: '5' }).timing.accept_on_time_rate, 0.6667);
+  assert.equal(Kpi_compute(JOBS, { now: NOW, accept_target_hours: '' }).timing.accept_target_hours, 1);
+  assert.equal(Kpi_compute(JOBS, { now: NOW, tech: 'Daikin' }).timing.stages.accept.median_hours, null);
+});
+
+test('stageHours: stale acceptance after a reassign, check-in before acceptance, undated rows', () => {
+  const base = { created_at: at('2026-11-10T00:00:00Z'), accepted_at: at('2026-11-10T02:00:00Z') };
+  assert.equal(Kpi_stageHours(Object.assign({ status: 'ASSIGNED' }, base)).accept, null);
+  assert.equal(Kpi_stageHours(Object.assign({ status: 'ACCEPTED' }, base)).accept, 2);
+  const odd = Kpi_stageHours(Object.assign({ status: 'DONE', checkin_at: at('2026-11-10T01:00:00Z'), done_at: at('2026-11-10T06:00:00Z') }, base));
+  assert.equal(odd.travel, null);
+  assert.equal(odd.repair, 4); // accepted -> done
+  assert.deepEqual(Kpi_stageHours({ status: 'CLOSED', created_at: '', done_at: '' }), { accept: null, travel: null, repair: null, ack: null, total: null });
 });
 
 test('techs list and helpers', () => {

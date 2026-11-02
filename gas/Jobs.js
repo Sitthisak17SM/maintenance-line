@@ -363,6 +363,7 @@ function Jobs_dashboard(actor, data) {
     branch_code: String(data.branch_code || '').trim(),
     category_code: String(data.category_code || '').trim(),
     tech: String(data.tech || '').trim(),
+    accept_target_hours: Jobs_config_().ACCEPT_TARGET_HOURS,
   });
 }
 

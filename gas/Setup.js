@@ -89,6 +89,7 @@ const SETUP_SEED = {
     ['AUTO_ACK_HOURS', '0', '0 = ไม่ปิดงานอัตโนมัติ'],
     ['NOTIFY_REPORTER_ON_ACCEPT', 'FALSE', 'push แจ้งผู้แจ้งตอนช่างรับงาน'],
     ['REMIND_AT_PERCENT', '75', 'เตือนเมื่อใช้เวลาไปถึงกี่ %'],
+    ['ACCEPT_TARGET_HOURS', '1', 'Dashboard: เป้าเวลาที่ช่างควรกดรับงาน (ชั่วโมง)'],
     ['PHOTO_MAX_COUNT', '4', 'ต่อการส่ง 1 ครั้ง'],
     ['PHOTO_MAX_EDGE_PX', '1280', 'ย่อด้านยาวก่อนอัปโหลด'],
     ['VIDEO_MAX_MB', '0', '0 = ยังไม่รับวิดีโอ (เปิดในเฟส 2 หลังทดสอบ)'],
