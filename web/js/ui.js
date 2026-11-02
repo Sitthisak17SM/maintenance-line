@@ -55,11 +55,25 @@ function showLoading(message) {
 function showError(err) {
   const box = el('div', { class: 'center' },
     el('p', { class: 'err' }, errorText(err)),
+    authDetail_(err),
     el('button', { type: 'button', class: 'btn', onclick: function () { retryAfter_(err); } }, 'ลองใหม่'));
   if (window.liff && liffReady && liff.isInClient()) {
     box.appendChild(el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { liff.closeWindow(); } }, 'ปิด'));
   }
   render(box);
+}
+
+/** For AUTH, LINE's reason and the browser's token expiry, so a login problem can be told apart. */
+function authDetail_(err) {
+  if (!err || err.code !== 'AUTH') return null;
+  let exp = '';
+  try {
+    const token = window.liff && liffReady ? liff.getDecodedIDToken() : null;
+    if (token && token.exp) exp = ' · token หมดอายุ ' + new Date(token.exp * 1000).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  } catch (e) {
+    // no token
+  }
+  return el('p', { class: 'muted', style: 'font-size:0.8rem;word-break:break-all' }, 'รายละเอียด: ' + (err.message || '-') + exp);
 }
 
 /** An expired login needs a new LINE login (the button is a deliberate click, so no loop guard). */
