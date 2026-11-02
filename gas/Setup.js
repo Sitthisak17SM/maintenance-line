@@ -104,6 +104,7 @@ function Setup_init() {
   Object.keys(SETUP_TABS).forEach(function (name) {
     if (Setup_ensureTab_(ss, name, env)) created.push(name);
   });
+  Setup_userDropdowns_(ss);
   const folder = Setup_driveFolder_(props, env);
   console.log('Setup_init done (ENV=%s). Sheet: %s | Folder: %s | New tabs: %s',
     env, ss.getUrl(), folder.getUrl(), created.length ? created.join(', ') : '(none)');
@@ -162,6 +163,30 @@ function Setup_ensureTab_(ss, name, env) {
     Repo_withLock(function () { sheet.getRange(2, 1, seed.length, seed[0].length).setValues(seed); });
   }
   return isNew;
+}
+
+/**
+ * Users.role and Users.branch_code become dropdowns, so the Admin picks a role instead of typing
+ * it (a typo would silently make the user a nobody). Runs after every tab exists (Branches is
+ * created after Users). Blank stays allowed: TECH and ADMIN often have no branch.
+ */
+function Setup_userDropdowns_(ss) {
+  const users = ss.getSheetByName('Users');
+  const branches = ss.getSheetByName('Branches');
+  const headers = Repo_headers(users);
+  const rows = users.getMaxRows() - 1;
+  const roleCol = headers.indexOf('role') + 1;
+  const branchCol = headers.indexOf('branch_code') + 1;
+  if (roleCol > 0) {
+    users.getRange(2, roleCol, rows, 1).setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInList(STATUS_ROLES, true).setAllowInvalid(false)
+      .setHelpText('STAFF = พนักงาน, MANAGER = ผู้จัดการร้าน, TECH = ช่าง, ADMIN = ผู้ดูแล, VIEWER = ผู้บริหาร (ดูอย่างเดียว)').build());
+  }
+  if (branchCol > 0 && branches) {
+    users.getRange(2, branchCol, rows, 1).setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInRange(branches.getRange('A2:A'), true).setAllowInvalid(false)
+      .setHelpText('รหัสร้านจากแท็บ Branches (ช่างหรือ Admin เว้นว่างได้)').build());
+  }
 }
 
 function Setup_driveFolder_(props, env) {

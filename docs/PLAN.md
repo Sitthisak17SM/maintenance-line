@@ -129,7 +129,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 |---|---|
 | JobLog | log_id, job_id, at, actor_id, actor_name, action, from_status, to_status, reason, old_value, new_value |
 | Parts | job_id, line_no, item, qty, unit_price, amount, vendor, note |
-| Users | line_user_id, display_name, real_name, phone, role, branch_code, active, registered_at, note |
+| Users | line_user_id, display_name, real_name, phone, role, branch_code, active, registered_at, note (`role` และ `branch_code` เป็น dropdown จาก `Setup_init` เลือกได้เฉพาะ 5 role และรหัสร้านในแท็บ Branches หรือเว้นว่าง) |
 | Branches | branch_code, name, active, sort |
 | Areas | branch_code, area_name, sort, active |
 | Categories | category_code, name_th, route_to, assignee_user_id, sort, active |
