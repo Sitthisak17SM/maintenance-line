@@ -15,7 +15,40 @@ async function initLiff() {
     liff.login({ redirectUri: location.href });
     return null;
   }
+  // Outside the LINE app LIFF keeps the ID token in the browser and still reports "logged in"
+  // after it expires (about an hour), so the server would answer AUTH forever. Log in again.
+  if (idTokenExpired_() && relogin()) return null;
   return liff.getIDToken();
+}
+
+const RELOGIN_KEY = 'relogin_at';
+const RELOGIN_GUARD_MS = 2 * 60 * 1000;
+
+function idTokenExpired_() {
+  const token = liff.getDecodedIDToken();
+  return !token || !token.exp || token.exp * 1000 < Date.now() + 60 * 1000;
+}
+
+/**
+ * Drops the stored login and goes to LINE login, coming back to this page. Inside the LINE app
+ * a reload gets a fresh token. Returns false (and does nothing) when it already ran in the last
+ * two minutes, so a token the server keeps rejecting cannot loop the page.
+ */
+function relogin() {
+  try {
+    const last = Number(sessionStorage.getItem(RELOGIN_KEY) || 0);
+    if (Date.now() - last < RELOGIN_GUARD_MS) return false;
+    sessionStorage.setItem(RELOGIN_KEY, String(Date.now()));
+  } catch (err) {
+    // No session storage: still try once.
+  }
+  if (liff.isInClient()) {
+    location.reload();
+  } else {
+    liff.logout();
+    liff.login({ redirectUri: location.href });
+  }
+  return true;
 }
 
 /**

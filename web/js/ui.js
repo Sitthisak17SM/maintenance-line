@@ -55,11 +55,20 @@ function showLoading(message) {
 function showError(err) {
   const box = el('div', { class: 'center' },
     el('p', { class: 'err' }, errorText(err)),
-    el('button', { type: 'button', class: 'btn', onclick: function () { location.reload(); } }, 'ลองใหม่'));
+    el('button', { type: 'button', class: 'btn', onclick: function () { retryAfter_(err); } }, 'ลองใหม่'));
   if (window.liff && liffReady && liff.isInClient()) {
     box.appendChild(el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { liff.closeWindow(); } }, 'ปิด'));
   }
   render(box);
+}
+
+/** An expired login needs a new LINE login (the button is a deliberate click, so no loop guard). */
+function retryAfter_(err) {
+  if (err && err.code === 'AUTH' && typeof relogin === 'function' && liffReady) {
+    try { sessionStorage.removeItem(RELOGIN_KEY); } catch (e) { /* ignore */ }
+    if (relogin()) return;
+  }
+  location.reload();
 }
 
 function errorText(err) {

@@ -363,7 +363,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 1. เรียก `init`
 2. ถ้ายังไม่ได้ login ให้เรียก `liff.login({ redirectUri: location.href })`
-3. ได้ token จาก `liff.getIDToken()`
+3. ได้ token จาก `liff.getIDToken()` ถ้า token หมดอายุแล้ว (`exp` ใน `liff.getDecodedIDToken()` เหลือไม่ถึง 1 นาที) ให้เรียก `relogin()` ก่อน เพราะนอกแอป LINE ตัว LIFF เก็บ token ไว้ในเบราว์เซอร์และยังบอกว่า login อยู่หลัง token หมดอายุ (ประมาณ 1 ชั่วโมง) ทำให้ server ตอบ AUTH ทุกครั้ง `relogin()` เรียก `liff.logout()` แล้ว `liff.login()` (ในแอป LINE ใช้ reload) และไม่ทำซ้ำภายใน 2 นาทีเพื่อกันวนลูป ปุ่ม "ลองใหม่" ของ error AUTH ก็เรียก `relogin()` เช่นกัน (แก้ 2 พ.ย. 2026)
 4. เรียก `api('me')`
 5. ถ้ายังไม่ลงทะเบียนให้พาไปหน้า register
 
