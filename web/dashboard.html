@@ -348,6 +348,7 @@
 
     function timingSection(d) {
       const t = d.timing;
+      if (!t) return null; // an older API deployment without stage times
       const head = [el('h2', {}, 'ใช้เวลาแต่ละขั้นตอนเท่าไหร่'),
         el('p', { class: 'sub' }, 'ค่ากลางของงานที่แจ้งในช่วงที่เลือก คือครึ่งหนึ่งของงานใช้เวลาน้อยกว่านี้ (ไม่ใช้ค่าเฉลี่ย เพราะงานที่ค้างนานไม่กี่งานจะดึงตัวเลขขึ้น)')];
       if (!STAGES.some(function (s) { return t.stages[s.key].jobs; })) {
@@ -408,6 +409,7 @@
     }
 
     function drawTiming(d) {
+      if (!d.timing) return;
       const rows = timingRows(d);
       timingChart = bars('c-time', rows.map(function (r) { return r.name; }), STAGES.map(function (s) {
         return { label: s.label, color: cssVar(s.color), values: rows.map(function (r) { return r.row[s.key]; }) };
