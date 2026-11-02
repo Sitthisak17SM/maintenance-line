@@ -218,6 +218,7 @@ function Jobs_myOpen(actor) {
 /** Concurrent taps are serialized by the lock; everyone after the first gets CONFLICT. */
 function Jobs_accept(actor, jobId) {
   const r = Jobs_transition_(actor, jobId, 'accept', {});
+  Jobs_notifyAccepted_(r.job, actor);
   return Jobs_result_(r.job);
 }
 
@@ -262,6 +263,7 @@ function Jobs_reassign(actor, jobId, data) {
   // The acting ADMIN is already on the admin page, so only push to someone else.
   const others = Jobs_ids_(r.job.candidate_ids).filter(function (id) { return id !== actor.userId; });
   Jobs_notifyNew_(r.job, others, 'จ่ายงานโดย ' + actor.name);
+  if (r.job.status === 'ACCEPTED') Jobs_notifyAccepted_(r.job, actor); // a vendor job is taken at once
   return Jobs_result_(r.job);
 }
 
@@ -300,7 +302,9 @@ function Jobs_close(actor, jobId, data) {
 }
 
 function Jobs_ack(actor, jobId) {
-  return Jobs_result_(Jobs_transition_(actor, jobId, 'ack', {}).job);
+  const r = Jobs_transition_(actor, jobId, 'ack', {});
+  Jobs_notifyAcked_(r.job, actor);
+  return Jobs_result_(r.job);
 }
 
 // --- phase 2 (PLAN §3, §8) ------------------------------------------------------------
@@ -445,6 +449,28 @@ function Jobs_notifyDone_(job) {
       .map(Routing_userId_);
     Line_push(to, [Flex_jobDone(job, Jobs_ref_(job))]);
   });
+}
+
+/** job_accepted to the reporter (Config NOTIFY_REPORTER_ON_ACCEPT, on unless FALSE). */
+function Jobs_notifyAccepted_(job, actor) {
+  Jobs_notify_('job_accepted', job, function () {
+    if (!Notify_flag(Jobs_config_().NOTIFY_REPORTER_ON_ACCEPT)) return;
+    const to = Notify_acceptRecipients(job, actor, Jobs_activeIds_());
+    if (to.length) Line_push(to, [Flex_jobAccepted(job, Jobs_ref_(job))]);
+  });
+}
+
+/** job_acked to the technician of a job closed with nobody on site (Config NOTIFY_TECH_ON_ACK). */
+function Jobs_notifyAcked_(job, actor) {
+  Jobs_notify_('job_acked', job, function () {
+    if (!Notify_flag(Jobs_config_().NOTIFY_TECH_ON_ACK)) return;
+    const to = Notify_ackRecipients(job, actor, Jobs_activeIds_());
+    if (to.length) Line_push(to, [Flex_jobAcked(job, Jobs_ref_(job), actor.name)]);
+  });
+}
+
+function Jobs_activeIds_() {
+  return Jobs_tab_('Users').filter(Routing_isActiveUser).map(Routing_userId_);
 }
 
 // --- helpers ------------------------------------------------------------------------

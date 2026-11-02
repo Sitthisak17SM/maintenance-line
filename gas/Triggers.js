@@ -88,8 +88,9 @@ function Sla_autoAck_(jobs, now, hours) {
   jobs.forEach(function (job) {
     if (!Sla_autoAckDue(job, now, hours)) return;
     try {
-      Jobs_transition_(STATUS_SYSTEM_ACTOR, job.job_id, 'auto_ack', {});
+      const r = Jobs_transition_(STATUS_SYSTEM_ACTOR, job.job_id, 'auto_ack', {});
       n++;
+      Jobs_notifyAcked_(r.job, STATUS_SYSTEM_ACTOR);
     } catch (err) {
       // Someone acked it between the read and the lock; nothing to do.
       if (!err.code) console.error('auto_ack %s failed: %s', job.job_id, err.stack || err);

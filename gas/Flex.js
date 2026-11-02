@@ -87,6 +87,43 @@ function Flex_acceptResult(job, errorMessage) {
   });
 }
 
+/** Push to the reporter when someone takes the job (PLAN §8 job_accepted, Config NOTIFY_REPORTER_ON_ACCEPT). */
+function Flex_jobAccepted(job, ref) {
+  const id = String(job.job_id);
+  const who = job.vendor ? job.vendor + ' (ช่างนอก)' : (job.assignee_name || 'ช่าง');
+  return Flex_message_(who + ' รับงาน ' + id + ' แล้ว', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('ช่างรับงานแล้ว', { weight: 'bold', size: 'lg', color: '#2E7D32' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_separator_(),
+      Flex_text_('ผู้รับงาน: ' + who + ' · ' + Flex_date(job.accepted_at), { size: 'sm' }),
+      Flex_text_('จะเข้าหน้างานภายใน ' + Flex_date(job.response_due_at), { size: 'sm', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('ดูสถานะ', Flex_liffUrl('job.html', { id: id }), true)]),
+  });
+}
+
+/** Push to the technician when a job they closed with nobody on site is acknowledged (PLAN §8 job_acked). */
+function Flex_jobAcked(job, ref, byName) {
+  const id = String(job.job_id);
+  return Flex_message_('งาน ' + id + ' ได้รับการรับทราบแล้ว', {
+    type: 'bubble',
+    body: Flex_box_([
+      Flex_text_('รับทราบงานแล้ว ปิดงานเรียบร้อย', { weight: 'bold', size: 'lg', color: '#2E7D32' }),
+      Flex_idRow_(job),
+      Flex_text_(job.title, { weight: 'bold' }),
+      Flex_text_(Flex_where_(job, ref), { size: 'sm', color: FLEX_MUTED }),
+      Flex_separator_(),
+      Flex_text_('รับทราบโดย: ' + (byName || '-') + ' · ' + Flex_date(job.ack_at), { size: 'sm' }),
+      Flex_text_('หมายเหตุตอนปิดงาน: ' + job.onsite_note, { size: 'xs', color: FLEX_MUTED }),
+    ]),
+    footer: Flex_box_([Flex_uriButton_('เปิดงาน', Flex_liffUrl('job.html', { id: id }), true)]),
+  });
+}
+
 /** Push to ADMINs when a candidate or assignee rejects. */
 function Flex_jobRejected(job, ref, reason, byName) {
   const id = String(job.job_id);

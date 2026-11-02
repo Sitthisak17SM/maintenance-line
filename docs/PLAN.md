@@ -186,7 +186,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | ENV | test | test หรือ prod |
 | JOB_ID_PREFIX | MT | |
 | AUTO_ACK_HOURS | 0 | 0 = ไม่ปิดงานอัตโนมัติ |
-| NOTIFY_REPORTER_ON_ACCEPT | FALSE | push แจ้งผู้แจ้งตอนช่างรับงาน |
+| NOTIFY_REPORTER_ON_ACCEPT | TRUE | push แจ้งผู้แจ้งตอนช่างรับงาน (การ์ด job_accepted) ไม่มีแถวหรือว่าง = TRUE |
+| NOTIFY_TECH_ON_ACK | TRUE | push แจ้งช่างเมื่องานที่ปิดแบบไม่มีคนอยู่หน้างานถูกรับทราบ (การ์ด job_acked) ไม่มีแถวหรือว่าง = TRUE |
 | REMIND_AT_PERCENT | 75 | เตือนเมื่อใช้เวลาไปถึงกี่ % |
 | ACCEPT_TARGET_HOURS | 1 | Dashboard: เป้าเวลาที่ช่างควรกดรับงาน (ชั่วโมง) ไม่มีแถวหรือว่าง = 1 |
 | PHOTO_MAX_COUNT | 4 | ต่อการส่ง 1 ครั้ง |
@@ -326,9 +327,11 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | job_new | create, forward, reassign (เลือกช่าง) | candidates | รับงาน (postback) · ปฏิเสธ (LIFF job?do=reject) · รายละเอียด | push | 1 |
 | job_received | ได้เลขงานจาก liff.sendMessages | ผู้แจ้ง | ดูสถานะ | reply | 1 |
 | accept_result | กดรับงาน | คนที่กด | เปิดงาน (หรือแจ้งว่ามีคนรับไปแล้ว) | reply | 1 |
+| job_accepted | accept และ reassign ที่เลือกช่างนอก | ผู้แจ้ง (ถ้า active และไม่ใช่คนที่รับเอง) เปิดปิดด้วย Config `NOTIFY_REPORTER_ON_ACCEPT` | ดูสถานะ | push | 2 (เพิ่ม 2 พ.ย. 2026) |
 | job_rejected | reject | ADMIN | จ่ายงานใหม่ (LIFF admin) | push | 1 |
 | job_done | close | ผู้แจ้ง (ถ้า inactive ส่งให้ MANAGER ของสาขา) | รับทราบงาน (postback) · รายละเอียด | push | 1 |
 | ack_result | ack | คนที่กด | — | reply | 1 |
+| job_acked | ack และ auto_ack ของงานที่ปิดแบบ "ไม่มีคนอยู่หน้างาน" (มี `onsite_note`) | assignee (ถ้า active และไม่ใช่คนที่กดรับทราบเอง) เปิดปิดด้วย Config `NOTIFY_TECH_ON_ACK` | เปิดงาน | push | 2 (เพิ่ม 2 พ.ย. 2026) |
 | ext_request | request_ext | ADMIN | อนุมัติ · ไม่อนุมัติ (postback) | push | 2 |
 | ext_result | decide_ext | assignee | เปิดงาน | push | 2 |
 | sla_alert | Sla_tick | assignee เมื่อถึง 75% และ ADMIN เมื่อเกินกำหนด (รวมทุกงานเป็นข้อความเดียวต่อคนต่อรอบ) | เปิดงาน | push | 2 |
@@ -350,9 +353,9 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 - LINE นับต่อผู้รับต่อคำขอ ส่งหลาย bubble ให้คนเดียวในคำขอเดียวนับเป็น 1
 - reply ไม่นับโควตา
-- คาดว่าใช้ push 2–3 ข้อความต่องาน
+- คาดว่าใช้ push 3–4 ข้อความต่องาน (job_new, job_accepted, job_done และ job_acked เฉพาะงานที่ไม่มีคนอยู่หน้างาน) แพ็กเกจฟรี 300 ข้อความต่อเดือนรองรับราว 70 งาน ถ้าไม่พอปิด `NOTIFY_REPORTER_ON_ACCEPT` ก่อน
 - ไม่ push ให้ผู้กดเอง: reassign ไม่ส่ง job_new ให้ ADMIN ที่จ่ายงาน และ reject ไม่ส่ง job_rejected ให้ ADMIN ที่ปฏิเสธเอง
-- `NOTIFY_REPORTER_ON_ACCEPT` ยังไม่ใช้ในเฟส 1 (Q8)
+- ผู้เลือกว่าใครได้การ์ด job_accepted และ job_acked อยู่ใน `gas/core/Notify.js` (มีเทสต์) สวิตช์ใน Config เปิดอยู่ถ้าว่างหรือไม่มีแถว ปิดด้วย `FALSE` (Q8 ตอบแล้ว 2 พ.ย. 2026)
 
 ## 9. หน้า LIFF (`web/`)
 
