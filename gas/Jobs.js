@@ -16,6 +16,11 @@ const JOBS_TAB_CACHE_SECONDS = 300;
 let Jobs_config_cache_ = null;
 let Jobs_tab_cache_ = {};
 
+// Clickable Drive links next to the photo file ids (2 Nov 2026), written whenever the ids are.
+const JOBS_PHOTO_LINKS = { photos_before: 'photos_before_links', photos_after: 'photos_after_links' };
+const JOBS_PHOTO_LINKS_DONE_KEY = 'PHOTO_LINKS_BACKFILLED';
+let Jobs_photoColumns_ok_ = false;
+
 // --- actors and users ---------------------------------------------------------
 
 /** Registered, active user -> actor {userId, name, role, branch_code, phone}. Throws NOT_REGISTERED or FORBIDDEN. */
@@ -144,6 +149,7 @@ function Jobs_create(actor, data) {
     related_job_id: '',
     source: 'LINE',
   }, t.fields);
+  Object.assign(job, Jobs_photoLinks_(job));
 
   let saved = false;
   try {
@@ -402,6 +408,7 @@ function Jobs_transition_(actor, jobId, action, input, progress) {
     if (typeof input === 'function') Status_assertCan(found.job, action, actor);
     const values = typeof input === 'function' ? input(found.job) : input;
     const t = Status_transition(found.job, action, actor, Object.assign({}, values, { now: now }));
+    Object.assign(t.fields, Jobs_photoLinks_(t.fields));
     const job = Repo_update('Jobs', found.rowIndex, t.fields);
     if (progress) progress.jobWritten = true;
     Repo_appendJobLog(job.job_id, actor, t.log, now);
@@ -410,6 +417,62 @@ function Jobs_transition_(actor, jobId, action, input, progress) {
     }
     return { job: job, log: t.log };
   });
+}
+
+/** Link fields for the photo id fields that `fields` sets; adds the link columns on first use. */
+function Jobs_photoLinks_(fields) {
+  const out = {};
+  Object.keys(JOBS_PHOTO_LINKS).forEach(function (k) {
+    if (Object.prototype.hasOwnProperty.call(fields, k)) out[JOBS_PHOTO_LINKS[k]] = Drive_viewUrls(Jobs_ids_(fields[k]));
+  });
+  if (Object.keys(out).length && !Jobs_photoColumns_ok_) {
+    Repo_ensureColumns('Jobs', Jobs_photoLinkColumns_());
+    Jobs_photoColumns_ok_ = true;
+  }
+  return out;
+}
+
+function Jobs_photoLinkColumns_() {
+  return Object.keys(JOBS_PHOTO_LINKS).map(function (k) { return JOBS_PHOTO_LINKS[k]; });
+}
+
+/**
+ * Rewrites both link columns from the photo ids of every job (older jobs included). Safe to run
+ * again. Runs from Setup_init, once from Sla_tick, or by hand in the editor. Returns cells changed.
+ */
+function Jobs_backfillPhotoLinks() {
+  Repo_ensureColumns('Jobs', Jobs_photoLinkColumns_());
+  Jobs_photoColumns_ok_ = true;
+  return Repo_withLock(function () {
+    const rows = Repo_readAll('Jobs');
+    if (!rows.length) return 0;
+    const sheet = Repo_sheet('Jobs');
+    const headers = Repo_headersOf_('Jobs');
+    let changed = 0;
+    Object.keys(JOBS_PHOTO_LINKS).forEach(function (k) {
+      const linkCol = JOBS_PHOTO_LINKS[k];
+      const values = rows.map(function (r) {
+        const want = Drive_viewUrls(Jobs_ids_(r[k]));
+        if (want !== String(r[linkCol] || '')) changed++;
+        return [want];
+      });
+      sheet.getRange(2, headers.indexOf(linkCol) + 1, values.length, 1).setValues(values);
+    });
+    console.log('Jobs_backfillPhotoLinks: %s cells changed', changed);
+    return changed;
+  });
+}
+
+/** Sla_tick runs this so existing sheets get their links after a deploy, without a manual step. */
+function Jobs_backfillPhotoLinksOnce_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(JOBS_PHOTO_LINKS_DONE_KEY)) return;
+  try {
+    Jobs_backfillPhotoLinks();
+    props.setProperty(JOBS_PHOTO_LINKS_DONE_KEY, new Date().toISOString());
+  } catch (err) {
+    console.error('Photo link backfill failed: %s', err.stack || err); // the next tick tries again
+  }
 }
 
 // --- notifications (push, PLAN §8) --------------------------------------------------

@@ -98,6 +98,26 @@ function Repo_findRows_(name, header, value) {
   return out;
 }
 
+/**
+ * Adds any of `wanted` headers the tab lacks, after its last column, so a new column reaches
+ * existing sheets without a manual step. Returns true when it added something.
+ */
+function Repo_ensureColumns(name, wanted) {
+  return Repo_withLock(function () {
+    const sheet = Repo_sheet(name);
+    const headers = Repo_headers(sheet);
+    const missing = wanted.filter(function (h) { return headers.indexOf(h) === -1; });
+    if (missing.length) {
+      const start = headers.length + 1;
+      const need = start + missing.length - 1 - sheet.getMaxColumns();
+      if (need > 0) sheet.insertColumnsAfter(sheet.getMaxColumns(), need);
+      sheet.getRange(1, start, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    }
+    Repo_headers_cache_[name] = headers.concat(missing);
+    return missing.length > 0;
+  });
+}
+
 /** Writes `changes` (by header) into one row; other cells keep their values. Returns the merged record. */
 function Repo_update(name, rowIndex, changes) {
   return Repo_withLock(function () {

@@ -122,6 +122,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | related_job_id | text | เฟส 3 |
 | source | enum | LINE / MIGRATED |
 | updated_at | Date | |
+| photos_before_links | text | ลิงก์ Drive ของรูปก่อนซ่อม บรรทัดละรูป กดเปิดในชีตได้ (เพิ่ม 2 พ.ย. 2026) เขียนพร้อม `photos_before` เป็น URL ธรรมดา ไม่ใช้ HYPERLINK หรือ rich text เพราะ `Repo_update` เขียนทั้งแถวจากค่า คอลัมน์นี้เพิ่มเองด้วย `Repo_ensureColumns` และงานเก่าเติมด้วย `Jobs_backfillPhotoLinks` (รันจาก `Setup_init`, ครั้งเดียวจาก `Sla_tick` ด้วย Script Property `PHOTO_LINKS_BACKFILLED`, หรือรันเองใน editor) |
+| photos_after_links | text | ลิงก์ Drive ของรูปหลังซ่อม แบบเดียวกับ `photos_before_links` |
 
 ### แท็บอื่น
 

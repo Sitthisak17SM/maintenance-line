@@ -14,6 +14,7 @@ const SETUP_TABS = {
     'response_due_at', 'due_at', 'ext_pending', 'ext_requested_due_at', 'ext_reason',
     'reject_count', 'ext_count', 'cause', 'fix', 'cost_total', 'photos_after', 'onsite_note',
     'ack_by', 'ack_at', 'alert_flags', 'is_repeat', 'related_job_id', 'source', 'updated_at',
+    'photos_before_links', 'photos_after_links', // clickable Drive URLs, one per line (2 Nov 2026)
   ],
   JobLog: ['log_id', 'job_id', 'at', 'actor_id', 'actor_name', 'action', 'from_status', 'to_status', 'reason', 'old_value', 'new_value'],
   Parts: ['job_id', 'line_no', 'item', 'qty', 'unit_price', 'amount', 'vendor', 'note'],
@@ -108,6 +109,7 @@ function Setup_init() {
     if (Setup_ensureTab_(ss, name, env)) created.push(name);
   });
   Setup_userDropdowns_(ss);
+  Jobs_backfillPhotoLinks();
   const folder = Setup_driveFolder_(props, env);
   console.log('Setup_init done (ENV=%s). Sheet: %s | Folder: %s | New tabs: %s',
     env, ss.getUrl(), folder.getUrl(), created.length ? created.join(', ') : '(none)');

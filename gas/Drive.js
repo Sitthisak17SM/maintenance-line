@@ -73,6 +73,14 @@ function Drive_trashFiles(fileIds) {
   });
 }
 
+/**
+ * Drive links for the Jobs tab, one per line. Plain URLs, not HYPERLINK formulas or rich text:
+ * Repo_update rewrites whole rows from their values, which would drop either of those.
+ */
+function Drive_viewUrls(fileIds) {
+  return (fileIds || []).map(function (id) { return 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view'; }).join('\n');
+}
+
 /** URL for <img> in LIFF pages (PLAN §12). */
 function Drive_thumbnailUrl(fileId) {
   return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w1000';

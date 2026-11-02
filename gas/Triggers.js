@@ -10,6 +10,7 @@ const TRIGGERS_SLA_HANDLER = 'Sla_tick';
  * auto_ack when Config AUTO_ACK_HOURS > 0.
  */
 function Sla_tick() {
+  Jobs_backfillPhotoLinksOnce_(); // one-time, after the photo link columns were added (2 Nov 2026)
   const now = new Date();
   const config = Jobs_config_();
   const users = Jobs_tab_('Users');
