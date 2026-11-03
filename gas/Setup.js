@@ -243,6 +243,7 @@ function Setup_check() {
 const SETUP_KNOWN_PROPS = {
   LINE_CHANNEL_ACCESS_TOKEN: 1, LINE_LOGIN_CHANNEL_ID: 1, LIFF_ID: 1, WEBHOOK_KEY: 1,
   WEB_BASE_URL: 1, SHEET_ID: 1, DRIVE_FOLDER_ID: 1,
+  PHOTO_LINKS_BACKFILLED: 1, // set by Jobs_backfillPhotoLinksOnce_ (JOBS_PHOTO_LINKS_DONE_KEY)
 };
 
 // Values-only copy of the legacy "Maintenance List" (the 7 shop tabs), made on 1 Nov 2026 so the
