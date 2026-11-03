@@ -577,6 +577,12 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 - **กำหนดเวลา:** ไม่ใส่ `response_due_at`/`due_at` งานเก่าจึงไม่ถูกเตือน SLA และไม่นับใน KPI ที่อิงกำหนดเวลา
 - **วิธีรัน:** `Setup_migrateLegacyDryRun()` ดูผลก่อน แล้ว `Setup_migrateLegacyRun()` รันซ้ำได้ แถวที่มีอยู่แล้วจะถูกข้าม
 
+**เคลียร์งานค้างก่อนเริ่มใช้งานจริง (AOF ตัดสินใจ 3 พ.ย. 2026)**
+
+- **งานที่เคลียร์:** งานเก่าที่ยังเปิดอยู่ (`source = MIGRATED` และสถานะอยู่ในงานเปิด) และงานทดสอบใน `SETUP_STALE_EXTRA_IDS` (ตอนนี้คือ `MT-2611-0001`) ตัวเลือกงานอยู่ที่ `Migrate_staleJobs` ใน `gas/core/Migrate.js` (มีเทสต์)
+- **วิธีปิด:** `cancel` ผ่าน `Status_transition` ทีละงาน ผู้กระทำคือ ADMIN ที่ active คนแรกในแท็บ Users เขียน JobLog พร้อมเหตุผล "เคลียร์งานค้างจากระบบเดิมก่อนเริ่มใช้งานจริง" (งานทดสอบใช้ "งานทดสอบระบบ") ไม่ส่งการ์ด LINE และ Dashboard ไม่นับเป็นงานซ่อมเสร็จ
+- **วิธีรัน:** `Setup_cancelStaleDryRun()` ดูรายการก่อน แล้ว `Setup_cancelStaleRun()` รันซ้ำได้ งานที่ยกเลิกแล้วจะไม่ถูกเลือกอีก
+
 ## 15. โครงสร้าง repo
 
 ```

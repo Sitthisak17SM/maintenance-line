@@ -106,6 +106,19 @@ function Migrate_jobId(branchCode, n) {
   return 'LG-' + branchCode + '-' + String(n).padStart(3, '0');
 }
 
+/**
+ * Jobs to cancel when clearing the backlog before go-live: still open (`openStatuses`) and either
+ * migrated or listed in `extraIds` (leftover test jobs). Closed jobs are never returned, so a
+ * second run finds nothing.
+ */
+function Migrate_staleJobs(jobs, openStatuses, extraIds) {
+  const extra = (extraIds || []).map(String);
+  return (jobs || []).filter(function (j) {
+    if (!j || !j.job_id || (openStatuses || []).indexOf(String(j.status)) === -1) return false;
+    return String(j.source) === 'MIGRATED' || extra.indexOf(String(j.job_id)) !== -1;
+  });
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { MIGRATE_TABS, MIGRATE_HEADER_ROW, Migrate_row, Migrate_key, Migrate_date, Migrate_jobId };
+  module.exports = { MIGRATE_TABS, MIGRATE_HEADER_ROW, Migrate_row, Migrate_key, Migrate_date, Migrate_jobId, Migrate_staleJobs };
 }

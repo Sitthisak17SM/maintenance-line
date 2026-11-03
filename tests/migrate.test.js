@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Migrate_row, Migrate_key, Migrate_date, Migrate_jobId } = require('../gas/core/Migrate.js');
+const { Migrate_row, Migrate_key, Migrate_date, Migrate_jobId, Migrate_staleJobs } = require('../gas/core/Migrate.js');
 
 const ROW = {
   Date: 46249, Details: 'ไฟทางลงชั้น 46 ไป 45 ดับ\nเปลี่ยนหลอด 2 ดวง', Technician: "P'Nut",
@@ -91,4 +91,20 @@ test('Migrate_key: branch + title + Bangkok day; same key whether the date came 
 
 test('Migrate_jobId', () => {
   assert.equal(Migrate_jobId('GIR', 7), 'LG-GIR-007');
+});
+
+test('Migrate_staleJobs picks open migrated jobs and listed test jobs only', () => {
+  const OPEN = ['NEW', 'ASSIGNED', 'REJECTED', 'ACCEPTED', 'IN_PROGRESS'];
+  const jobs = [
+    { job_id: 'LG-PPP-001', status: 'IN_PROGRESS', source: 'MIGRATED' },
+    { job_id: 'LG-PPP-002', status: 'NEW', source: 'MIGRATED' },
+    { job_id: 'LG-PPP-003', status: 'CLOSED', source: 'MIGRATED' },
+    { job_id: 'MT-2611-0001', status: 'NEW', source: 'LINE' },
+    { job_id: 'MT-2611-0002', status: 'ASSIGNED', source: 'LINE' },
+    { job_id: 'MT-2611-0003', status: 'CANCELLED', source: 'LINE' },
+    { job_id: '', status: 'NEW', source: 'MIGRATED' },
+  ];
+  const ids = Migrate_staleJobs(jobs, OPEN, ['MT-2611-0001', 'MT-2611-0003']).map((j) => j.job_id);
+  assert.deepEqual(ids, ['LG-PPP-001', 'LG-PPP-002', 'MT-2611-0001']);
+  assert.deepEqual(Migrate_staleJobs(jobs, OPEN, []).map((j) => j.job_id), ['LG-PPP-001', 'LG-PPP-002']);
 });

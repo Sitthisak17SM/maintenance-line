@@ -249,6 +249,56 @@ const SETUP_KNOWN_PROPS = {
 // original file is never touched. Not a secret: the file is private to its owner.
 const SETUP_LEGACY_SHEET_ID = '10NMXQlpB5M4y2_6myVNZikRERMHtVfhtQmkNdSAofKo';
 
+// Backlog clear before go-live (3 Nov 2026, AOF): open migrated jobs plus leftover test jobs.
+const SETUP_STALE_EXTRA_IDS = ['MT-2611-0001'];
+const SETUP_STALE_REASON = 'เคลียร์งานค้างจากระบบเดิมก่อนเริ่มใช้งานจริง';
+const SETUP_STALE_TEST_REASON = 'งานทดสอบระบบ';
+
+/** Editor entry points. Dry run first, then the real run. */
+function Setup_cancelStaleDryRun() {
+  return Setup_cancelStale_({ dryRun: true });
+}
+
+function Setup_cancelStaleRun() {
+  return Setup_cancelStale_({});
+}
+
+/**
+ * Cancels the jobs Migrate_staleJobs picks through the state machine (JobLog row each, no LINE
+ * push), as the first active ADMIN in Users. Safe to re-run: cancelled jobs are no longer open.
+ */
+function Setup_cancelStale_(opts) {
+  const admin = Repo_readAll('Users').filter(function (u) {
+    return Routing_isActiveUser(u) && String(u.role || '').trim().toUpperCase() === 'ADMIN';
+  })[0];
+  if (!admin) throw new Error('Setup_cancelStale: no active ADMIN in Users');
+  const actor = Jobs_actorFromUser_(admin);
+  const stale = Migrate_staleJobs(Repo_readAll('Jobs'), STATUS_OPEN, SETUP_STALE_EXTRA_IDS);
+
+  const byStatus = {};
+  stale.forEach(function (j) { byStatus[j.status] = (byStatus[j.status] || 0) + 1; });
+  console.log('%s jobs to cancel as %s: %s\n%s', stale.length, actor.name, JSON.stringify(byStatus),
+    stale.map(function (j) { return j.job_id + ' ' + j.status + ' ' + j.branch_code + ' ' + j.title; }).join('\n'));
+  if (opts.dryRun) {
+    console.log('Dry run: nothing written. Run Setup_cancelStaleRun to cancel them.');
+    return { found: stale.length, cancelled: 0 };
+  }
+
+  let cancelled = 0;
+  const failed = [];
+  stale.forEach(function (j) {
+    const reason = SETUP_STALE_EXTRA_IDS.indexOf(String(j.job_id)) !== -1 ? SETUP_STALE_TEST_REASON : SETUP_STALE_REASON;
+    try {
+      Jobs_transition_(actor, j.job_id, 'cancel', { reason: reason });
+      cancelled++;
+    } catch (err) {
+      failed.push(j.job_id + ': ' + (err.message || err));
+    }
+  });
+  console.log('Cancelled %s of %s%s', cancelled, stale.length, failed.length ? '\nFailed:\n' + failed.join('\n') : '');
+  return { found: stale.length, cancelled: cancelled, failed: failed };
+}
+
 /** Editor entry points (the editor cannot pass arguments). Dry run first, then the real run. */
 function Setup_migrateLegacyDryRun() {
   return Setup_migrateLegacy(SETUP_LEGACY_SHEET_ID, { dryRun: true });
