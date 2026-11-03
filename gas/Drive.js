@@ -74,8 +74,8 @@ function Drive_trashFiles(fileIds) {
 }
 
 /**
- * Drive links for the Jobs tab, one per line. Plain URLs, not HYPERLINK formulas or rich text:
- * Repo_update rewrites whole rows from their values, which would drop either of those.
+ * Drive links for the Jobs tab, one per line. Repo writes such a cell as rich text with one
+ * link per line (Repo_linkify_), since Sheets does not link a cell holding several URLs.
  */
 function Drive_viewUrls(fileIds) {
   return (fileIds || []).map(function (id) { return 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view'; }).join('\n');

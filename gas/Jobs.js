@@ -18,7 +18,8 @@ let Jobs_tab_cache_ = {};
 
 // Clickable Drive links next to the photo file ids (2 Nov 2026), written whenever the ids are.
 const JOBS_PHOTO_LINKS = { photos_before: 'photos_before_links', photos_after: 'photos_after_links' };
-const JOBS_PHOTO_LINKS_DONE_KEY = 'PHOTO_LINKS_BACKFILLED';
+// v2 (3 Nov 2026): re-run once so existing cells become rich text with one link per line.
+const JOBS_PHOTO_LINKS_DONE_KEY = 'PHOTO_LINKS_RICH_BACKFILLED';
 let Jobs_photoColumns_ok_ = false;
 
 // --- actors and users ---------------------------------------------------------
@@ -438,7 +439,7 @@ function Jobs_photoLinkColumns_() {
 
 /**
  * Rewrites both link columns from the photo ids of every job (older jobs included). Safe to run
- * again. Runs from Setup_init, once from Sla_tick, or by hand in the editor. Returns cells changed.
+ * again. Runs from Setup_init, once from Sla_tick, or by hand in the editor. Returns cells written.
  */
 function Jobs_backfillPhotoLinks() {
   Repo_ensureColumns('Jobs', Jobs_photoLinkColumns_());
@@ -448,18 +449,19 @@ function Jobs_backfillPhotoLinks() {
     if (!rows.length) return 0;
     const sheet = Repo_sheet('Jobs');
     const headers = Repo_headersOf_('Jobs');
-    let changed = 0;
+    let written = 0;
     Object.keys(JOBS_PHOTO_LINKS).forEach(function (k) {
       const linkCol = JOBS_PHOTO_LINKS[k];
+      // Rich text, one link per line: a plain cell with several URLs is not clickable in Sheets.
       const values = rows.map(function (r) {
         const want = Drive_viewUrls(Jobs_ids_(r[k]));
-        if (want !== String(r[linkCol] || '')) changed++;
-        return [want];
+        written++;
+        return [Repo_richLinks_(want) || SpreadsheetApp.newRichTextValue().setText(want).build()];
       });
-      sheet.getRange(2, headers.indexOf(linkCol) + 1, values.length, 1).setValues(values);
+      sheet.getRange(2, headers.indexOf(linkCol) + 1, values.length, 1).setRichTextValues(values);
     });
-    console.log('Jobs_backfillPhotoLinks: %s cells changed', changed);
-    return changed;
+    console.log('Jobs_backfillPhotoLinks: %s cells written', written);
+    return written;
   });
 }
 

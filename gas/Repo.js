@@ -118,7 +118,11 @@ function Repo_ensureColumns(name, wanted) {
   });
 }
 
-/** Writes `changes` (by header) into one row; other cells keep their values. Returns the merged record. */
+/**
+ * Writes `changes` (by header) into one row and returns the merged record. Only the changed
+ * cells are written (one write per run of adjacent columns), so other cells keep their values
+ * and their rich text, such as the photo links.
+ */
 function Repo_update(name, rowIndex, changes) {
   return Repo_withLock(function () {
     const sheet = Repo_sheet(name);
@@ -126,12 +130,20 @@ function Repo_update(name, rowIndex, changes) {
     Object.keys(changes).forEach(function (k) {
       if (headers.indexOf(k) === -1) throw new Error('Tab ' + name + ' has no column ' + k);
     });
-    const range = sheet.getRange(rowIndex, 1, 1, headers.length);
-    const row = range.getValues()[0].map(function (v, i) {
-      const h = headers[i];
-      return h && Object.prototype.hasOwnProperty.call(changes, h) ? changes[h] : v;
+    const changed = function (i) { return !!headers[i] && Object.prototype.hasOwnProperty.call(changes, headers[i]); };
+    const row = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0].map(function (v, i) {
+      return changed(i) ? changes[headers[i]] : v;
     });
-    range.setValues(Repo_safeRows_(range, [row]));
+    for (let i = 0; i < headers.length; i++) {
+      if (!changed(i)) continue;
+      let end = i;
+      while (end + 1 < headers.length && changed(end + 1)) end++;
+      const cells = [row.slice(i, end + 1)];
+      const range = sheet.getRange(rowIndex, i + 1, 1, cells[0].length);
+      range.setValues(Repo_safeRows_(range, cells));
+      Repo_linkify_(range, cells);
+      i = end;
+    }
     return Repo_toObject_(headers, row);
   });
 }
@@ -165,7 +177,30 @@ function Repo_appendRows(name, objs) {
     if (missing > 0) sheet.insertRowsAfter(sheet.getMaxRows(), missing);
     const range = sheet.getRange(start, 1, rows.length, headers.length);
     range.setValues(Repo_safeRows_(range, rows));
+    Repo_linkify_(range, rows);
   });
+}
+
+/**
+ * Turns cells of `range` whose value (from `rows`) is URL lines into rich text with one link per
+ * line (Links_spans). Sheets links a plain-text cell only when it is a single URL.
+ */
+function Repo_linkify_(range, rows) {
+  rows.forEach(function (row, r) {
+    row.forEach(function (v, c) {
+      const rich = Repo_richLinks_(v);
+      if (rich) range.getCell(r + 1, c + 1).setRichTextValue(rich);
+    });
+  });
+}
+
+/** RichTextValue for URL lines, or null when `v` is not only URLs. */
+function Repo_richLinks_(v) {
+  const spans = Links_spans(v);
+  if (!spans.length) return null;
+  const b = SpreadsheetApp.newRichTextValue().setText(v);
+  spans.forEach(function (s) { b.setLinkUrl(s.start, s.end, s.url); });
+  return b.build();
 }
 
 /**

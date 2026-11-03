@@ -122,7 +122,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | related_job_id | text | เฟส 3 |
 | source | enum | LINE / MIGRATED |
 | updated_at | Date | |
-| photos_before_links | text | ลิงก์ Drive ของรูปก่อนซ่อม บรรทัดละรูป กดเปิดในชีตได้ (เพิ่ม 2 พ.ย. 2026) เขียนพร้อม `photos_before` เป็น URL ธรรมดา ไม่ใช้ HYPERLINK หรือ rich text เพราะ `Repo_update` เขียนทั้งแถวจากค่า คอลัมน์นี้เพิ่มเองด้วย `Repo_ensureColumns` และงานเก่าเติมด้วย `Jobs_backfillPhotoLinks` (รันจาก `Setup_init`, ครั้งเดียวจาก `Sla_tick` ด้วย Script Property `PHOTO_LINKS_BACKFILLED`, หรือรันเองใน editor) |
+| photos_before_links | text | ลิงก์ Drive ของรูปก่อนซ่อม บรรทัดละรูป กดเปิดในชีตได้ (เพิ่ม 2 พ.ย. 2026) เขียนพร้อม `photos_before` เป็น rich text ที่มีลิงก์แยกทีละบรรทัด (แก้ 3 พ.ย. 2026: Sheets ทำให้กดได้เฉพาะช่องที่มี URL เดียว งานที่มีหลายรูปจึงเปิดจากชีตไม่ได้) Repo ทำให้เองทุกครั้งที่เขียนช่องที่มีแต่ URL (`Repo_linkify_` ใช้ `Links_spans` ใน `core/Links.js`) และ `Repo_update` เขียนเฉพาะช่องที่เปลี่ยน ลิงก์ในช่องอื่นจึงไม่หาย คอลัมน์นี้เพิ่มเองด้วย `Repo_ensureColumns` และงานเก่าเติมด้วย `Jobs_backfillPhotoLinks` (รันจาก `Setup_init`, ครั้งเดียวจาก `Sla_tick` ด้วย Script Property `PHOTO_LINKS_RICH_BACKFILLED`, หรือรันเองใน editor) |
 | photos_after_links | text | ลิงก์ Drive ของรูปหลังซ่อม แบบเดียวกับ `photos_before_links` |
 
 ### แท็บอื่น
@@ -613,12 +613,12 @@ maintenance-line/
 │   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
 │   ├── Dev.js           Dev_smokeTest, Dev_testFlexImage (ทำงานเฉพาะ ENV=test)
 │   └── core/            pure logic, Node-testable
-│       ├── Status.js  Sla.js  Routing.js  JobId.js  Migrate.js  Kpi.js
+│       ├── Status.js  Sla.js  Routing.js  JobId.js  Migrate.js  Kpi.js  Notify.js  Links.js
 ├── web/
 │   ├── index.html  ping.html  register.html  report.html  job.html  jobs.html  admin.html  dashboard.html
 │   ├── js/              config.js (LIFF_ID, API_URL), liff.js, api.js, image.js, ui.js
 │   └── css/app.css
-├── tests/               status.test.js, status-phase2.test.js, sla.test.js, routing.test.js, jobid.test.js, migrate.test.js
+├── tests/               status.test.js, status-phase2.test.js, sla.test.js, routing.test.js, jobid.test.js, migrate.test.js, kpi.test.js, notify.test.js, links.test.js
 └── .github/workflows/   deploy-web.yml, deploy-gas.yml
 ```
 
