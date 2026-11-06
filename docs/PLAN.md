@@ -124,6 +124,9 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | updated_at | Date | |
 | photos_before_links | text | ลิงก์ Drive ของรูปก่อนซ่อม บรรทัดละรูป กดเปิดในชีตได้ (เพิ่ม 2 พ.ย. 2026) เขียนพร้อม `photos_before` เป็น rich text ที่มีลิงก์แยกทีละบรรทัด (แก้ 3 พ.ย. 2026: Sheets ทำให้กดได้เฉพาะช่องที่มี URL เดียว งานที่มีหลายรูปจึงเปิดจากชีตไม่ได้) Repo ทำให้เองทุกครั้งที่เขียนช่องที่มีแต่ URL (`Repo_linkify_` ใช้ `Links_spans` ใน `core/Links.js`) และ `Repo_update` เขียนเฉพาะช่องที่เปลี่ยน ลิงก์ในช่องอื่นจึงไม่หาย คอลัมน์นี้เพิ่มเองด้วย `Repo_ensureColumns` และงานเก่าเติมด้วย `Jobs_backfillPhotoLinks` (รันจาก `Setup_init`, ครั้งเดียวจาก `Sla_tick` ด้วย Script Property `PHOTO_LINKS_RICH_BACKFILLED`, หรือรันเองใน editor) |
 | photos_after_links | text | ลิงก์ Drive ของรูปหลังซ่อม แบบเดียวกับ `photos_before_links` |
+| video_before | text | file ID ของวิดีโอตอนแจ้งซ่อม ไม่บังคับ 1 คลิป (เพิ่ม 6 พ.ย. 2026 ดู §12) เพิ่มคอลัมน์เองด้วย `Repo_ensureColumns` เหมือนคอลัมน์ลิงก์ |
+| video_after | text | file ID ของวิดีโอตอนปิดงาน ไม่บังคับ 1 คลิป |
+| video_before_link, video_after_link | text | ลิงก์ Drive ของวิดีโอ กดเปิดในชีตได้ แบบเดียวกับ `photos_before_links` |
 
 ### แท็บอื่น
 
@@ -195,7 +198,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | PHOTO_MAX_COUNT | 4 | ต่อการส่ง 1 ครั้ง |
 | REPORT_PHOTO_REQUIRED | TRUE | บังคับแนบรูปอย่างน้อย 1 รูปตอนแจ้งซ่อม ไม่มีแถวหรือว่าง = TRUE ตั้ง FALSE เพื่อปิด (เพิ่ม 2 พ.ย. 2026) |
 | PHOTO_MAX_EDGE_PX | 1280 | ย่อด้านยาวก่อนอัปโหลด |
-| VIDEO_MAX_MB | 0 | 0 = ยังไม่รับวิดีโอ (เปิดในเฟส 2 หลังทดสอบ) |
+| VIDEO_MAX_MB | 0 | ขนาดวิดีโอสูงสุดต่อคลิป (MB) 0 = ปิดรับวิดีโอและซ่อนปุ่มวิดีโอในหน้าเว็บ AOF เลือก 20 (6 พ.ย. 2026) |
 | FLEX_SHOW_PHOTO | TRUE | แสดงรูปแรกบนการ์ด job_new ถ้าไม่มีแถวนี้ถือว่า TRUE (ตั้ง FALSE ถ้ารูปไม่แสดง ดู §18) |
 
 ## 5. Script Properties
@@ -258,7 +261,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | whoami | — | มี idToken | 0 |
 | me | — | มี idToken | 1 |
 | register | real_name, phone, branch_code | มี idToken | 1 |
-| createJob | branch_code, area, category_code, title, detail, priority, phone, photos[] | ลงทะเบียนแล้ว | 1 |
+| createJob | branch_code, area, category_code, title, detail, priority, phone, photos[], video | ลงทะเบียนแล้ว | 1 |
 | getJob | job_id | ผู้แจ้ง, candidate/assignee, MANAGER ของสาขา, ADMIN, VIEWER | 1 |
 | listJobs | scope (mine / branch / assigned / all), statuses[] | ตาม scope | 1 |
 | acceptJob | job_id | candidate, ADMIN | 1 |
@@ -266,7 +269,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | forwardJob | job_id, reason | TECH ที่เป็น candidate/assignee | 1 |
 | reassignJob | job_id, assignee_id หรือ vendor | ADMIN | 1 |
 | checkin | job_id | assignee, ADMIN | 1 |
-| closeJob | job_id, cause, fix, parts[{item, qty, unit_price, vendor}], photos[], onsite_note | assignee, ADMIN | 1 |
+| closeJob | job_id, cause, fix, parts[{item, qty, unit_price, vendor}], photos[], video, onsite_note | assignee, ADMIN | 1 |
 | ackJob | job_id | ผู้แจ้ง, MANAGER ของสาขา, ADMIN | 1 |
 | requestExtension | job_id, reason, new_due_at | assignee | 2 |
 | decideExtension | job_id, approve, note | ADMIN | 2 |
@@ -280,6 +283,8 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 
 - `me` กับ `register` ใช้แค่ ID token ส่วน action อื่นต้องเป็นผู้ใช้ที่ลงทะเบียนแล้วและ active
 - `register`: `{user}` ผู้ใช้ใหม่ได้ role STAFF และต้องเลือกร้าน ผู้ใช้เดิมแก้ได้แค่ชื่อจริงกับเบอร์ (role ไม่เปลี่ยน) เฉพาะ role STAFF ที่เปลี่ยนร้านเองได้ role อื่นใช้ร้านตามที่ Admin ตั้งในแท็บ Users และระบบไม่สนใจ `branch_code` ที่ส่งมา เพราะร้านเป็นขอบเขตสิทธิ์ของ MANAGER (§2)
+- `createJob` และ `closeJob`: `video` ไม่บังคับ เป็น `{mime, b64}` 1 คลิป (§12) ถ้า `VIDEO_MAX_MB` เป็น 0 จะได้ VALIDATION
+- `getJob`: คืน `video_before_url` และ `video_after_url` (ตัวเล่นของ Drive แบบ /preview) หรือ '' ถ้าไม่มีวิดีโอ
 - `createJob`: `phone` ถ้ากรอกต้องตรงรูปแบบเดียวกับ `register` ถ้าเว้นว่างใช้เบอร์ที่ลงทะเบียนไว้
 - `getJob`: `{job, status_label, photos_before_urls, photos_after_urls, parts, log, allowed_actions}` ถ้าเป็น ADMIN มี `reassign_options: {users, vendors}` (TECH/ADMIN ที่ active และ Vendors ที่ active) สำหรับหน้า admin
 - `listJobs`: `{total, jobs}` เรียงงานใหม่ก่อน ไม่เกิน 200 งาน กรองด้วย `branch_code` ได้ (MANAGER ใช้ scope branch ได้เฉพาะสาขาตัวเอง)
@@ -406,6 +411,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - **รูป:** อย่างน้อย 1 รูปเมื่อ Config `REPORT_PHOTO_REQUIRED` เปิดอยู่ (ค่าเริ่มต้น บังคับตั้งแต่ 2 พ.ย. 2026) ไม่เกิน 4 รูป server ตรวจซ้ำใน `createJob` หน้าเว็บอ่านค่าจาก `me.config.REPORT_PHOTO_REQUIRED`
   - มี 2 ปุ่ม: "ถ่ายรูป" (`accept="image/*"` + `capture="environment"` เปิดกล้องทันที) และ "คลังภาพ" (`accept="image/*"` + `multiple` เลือกรูปที่มีอยู่) ใช้ทั้งตอนแจ้งซ่อมและปิดงาน (AOF ตัดสินใจ 6 พ.ย. 2026)
   - ย่อด้วย canvas เป็น JPEG คุณภาพ 0.7 ให้ด้านยาวไม่เกิน 1280 px
+- **วิดีโอ:** ไม่บังคับ 1 คลิป แสดงเมื่อ `me.config.VIDEO_MAX_MB` มากกว่า 0 มีปุ่ม "ถ่ายวิดีโอ" และ "คลังวิดีโอ" (`videoPicker` ใน `js/image.js`) ย่อขนาดในเบราว์เซอร์ไม่ได้ จึงตรวจขนาดก่อนส่ง ถ้าเกินให้ผู้ใช้ตัดคลิปในมือถือแล้วเลือกใหม่
 - **หลังส่งสำเร็จ:**
   - ถ้า `liff.isInClient()` และ `liff.getContext().type === 'utou'` ให้เรียก `liff.sendMessages([{type:'text', text: job_id}])` แล้ว `liff.closeWindow()`
   - กรณีอื่นให้แสดงเลขงานบนหน้า
@@ -416,6 +422,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - **วิธีแก้:** ไม่บังคับ
 - **รายการอะไหล่:** เพิ่มหรือลบแถวได้ แต่ละแถวมี item, qty, unit_price, vendor
 - **รูป After:** อย่างน้อย 1 รูป
+- **วิดีโอหลังซ่อม:** ไม่บังคับ แบบเดียวกับฟอร์มแจ้งซ่อม
 - **ช่อง "ไม่มีคนอยู่หน้างาน":** ถ้าติ๊กต้องกรอก onsite_note
 
 **Rich menu**
@@ -483,7 +490,15 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 - **URL สำหรับแสดงในหน้า LIFF:** `https://drive.google.com/thumbnail?id={fileId}&sz=w1000`
 - **รูปบนการ์ด Flex:** ใช้ `https://lh3.googleusercontent.com/d/{fileId}=w1000` (ไม่ redirect) ต้องทดสอบว่า LINE แสดงได้หรือไม่ (§18) ถ้าไม่ได้ให้ตั้ง Config `FLEX_SHOW_PHOTO = FALSE`
 - **ลำดับการบันทึก:** ตรวจข้อมูลและสิทธิ์ให้ผ่านก่อน แล้วจึงบันทึกรูป เพื่อไม่ให้มีไฟล์ค้างใน Drive เมื่อคำขอถูกปฏิเสธ ถ้าบันทึกรูปแล้วแต่การเขียนแถว Jobs ล้มเหลว (ตรวจซ้ำภายใต้ lock ไม่ผ่าน, lock หมดเวลา, Drive ล้มกลางชุด) ให้ย้ายรูปที่บันทึกไปแล้วลงถังขยะ แต่ถ้าแถว Jobs เขียนสำเร็จแล้วให้เก็บรูปไว้
-- **ขนาด:** server ตรวจจำนวนรูปและขนาดทุกครั้ง ส่วนวิดีโอยังปิดไว้ (VIDEO_MAX_MB = 0)
+- **ขนาด:** server ตรวจจำนวนรูปและขนาดทุกครั้ง
+- **วิดีโอ (เพิ่ม 6 พ.ย. 2026 AOF ตัดสินใจ):**
+  - 1 คลิปต่อการแจ้งซ่อม และ 1 คลิปต่อการปิดงาน ไม่บังคับ
+  - ขนาดไม่เกิน Config `VIDEO_MAX_MB` (20 MB ประมาณ 10–20 วินาที) ส่งเป็น base64 ในคำขอเดียวกับรูป (ทดสอบ 6 พ.ย.: Web App รับคำขอ 28 MB ได้ใน 12 วินาที และ 40 MB ใน 15 วินาที)
+  - รับเฉพาะ MP4 และ MOV ตรวจทั้ง mime และเนื้อไฟล์ (กล่อง `ftyp` ที่ byte 4–7) ใน `core/Media.js`
+  - ชื่อไฟล์ `{job_id}_{before|after}_video.{mp4|mov}` ในโฟลเดอร์เดียวกับรูป แชร์แบบเดียวกัน ถ้าบันทึกงานไม่สำเร็จจะย้ายลงถังขยะพร้อมรูป
+  - หน้า job.html เล่นด้วย `https://drive.google.com/file/d/{fileId}/preview` ใน iframe (Drive ต้องประมวลผลสักพักหลังอัปโหลด) พร้อมลิงก์เปิดใน Drive
+  - การ์ด LINE เล่นวิดีโอจาก Drive ไม่ได้ การ์ด job_new และ job_done จึงขึ้นข้อความ "มีวิดีโอแนบ" ให้กดรายละเอียด
+  - วิดีโอใช้พื้นที่ Drive ของเจ้าของโฟลเดอร์เร็ว ถ้าพื้นที่ใกล้เต็มให้ลด `VIDEO_MAX_MB` หรือตั้ง 0
 
 ## 13. Dashboard และ KPI (เฟส 2)
 
@@ -619,12 +634,12 @@ maintenance-line/
 │   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
 │   ├── Dev.js           Dev_smokeTest, Dev_testFlexImage (ทำงานเฉพาะ ENV=test)
 │   └── core/            pure logic, Node-testable
-│       ├── Status.js  Sla.js  Routing.js  JobId.js  Migrate.js  Kpi.js  Notify.js  Links.js
+│       ├── Status.js  Sla.js  Routing.js  JobId.js  Migrate.js  Kpi.js  Notify.js  Links.js  Media.js
 ├── web/
 │   ├── index.html  ping.html  register.html  report.html  job.html  jobs.html  admin.html  dashboard.html
 │   ├── js/              config.js (LIFF_ID, API_URL), liff.js, api.js, image.js, ui.js
 │   └── css/app.css
-├── tests/               status.test.js, status-phase2.test.js, sla.test.js, routing.test.js, jobid.test.js, migrate.test.js, kpi.test.js, notify.test.js, links.test.js
+├── tests/               status.test.js, status-phase2.test.js, sla.test.js, routing.test.js, jobid.test.js, migrate.test.js, kpi.test.js, notify.test.js, links.test.js, media.test.js
 └── .github/workflows/   deploy-web.yml, deploy-gas.yml
 ```
 
