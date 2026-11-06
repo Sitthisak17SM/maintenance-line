@@ -72,6 +72,7 @@
 | `Line.js` | เรียก LINE API: reply, push (นับโควตา) และตรวจ ID token | `Line_reply`, `Line_push`, `Line_verifyIdToken` |
 | `Flex.js` | สร้างการ์ด LINE ทุกแบบ: งานใหม่, รับงานแล้ว, ปฏิเสธ, ซ่อมเสร็จ, ขอเลื่อน, เตือน SLA, งานของฉัน, ต้อนรับ | `Flex_jobNew`, `Flex_jobDone`, `Flex_slaAlerts` |
 | `Triggers.js` | `Sla_tick` ทำงานทุก 15 นาที: เตือนงานใกล้หรือเกินกำหนด ปิดงานอัตโนมัติ (ถ้าเปิดไว้) และเติมลิงก์รูปของงานเก่า | `Sla_tick`, `Triggers_install` |
+| `Ops.js` | ส่งสถานะสรุปไป Ops Hub ท้าย `Sla_tick` ทุกรอบ และส่ง error เมื่อ `Sla_tick` ล้ม (ไม่ตั้ง `OPS_*` = ไม่ส่ง) | `Ops_heartbeat_`, `Ops_error_`, `Ops_test` |
 | `Setup.js` | งานตั้งค่าที่รันจาก editor: สร้างชีตและแท็บ, ตรวจระบบ, ยกเลิกงานค้าง, นำเข้างานเก่า | `Setup_init`, `Setup_check`, `Setup_cancelStaleRun`, `Setup_migrateLegacyRun` |
 | `Dev.js` | ตัวช่วยทดสอบ รันได้เฉพาะ `ENV = test` | `Dev_smokeTest`, `Dev_slaDemo` |
 | `appsscript.json` | ตั้งค่าโปรเจกต์: V8, Asia/Bangkok, Web App เปิดให้ทุกคนเรียก | — |
@@ -150,6 +151,8 @@
 เก็บใน Apps Script → Project Settings → Script Properties เท่านั้น ห้ามใส่ใน repo หรือ `web/`
 
 `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_LOGIN_CHANNEL_ID`, `LIFF_ID`, `WEBHOOK_KEY`, `WEB_BASE_URL`, `SHEET_ID`, `DRIVE_FOLDER_ID`
+
+Ops Hub (ไม่บังคับ): `OPS_HUB_URL`, `OPS_TOKEN`, `OPS_SYSTEM_ID` (`maintenance-prod` หรือ `maintenance-test`) ดู PLAN §5
 
 ระบบตั้งค่าเหล่านี้เอง: `JOB_SEQ_YYMM` (ตัวนับเลขงานรายเดือน), `PHOTO_LINKS_BACKFILLED`, `PHOTO_LINKS_RICH_BACKFILLED`
 

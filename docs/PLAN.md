@@ -210,6 +210,11 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | SHEET_ID | ID ของชีต | Setup_init |
 | DRIVE_FOLDER_ID | โฟลเดอร์เก็บรูป | Setup_init |
 | JOB_SEQ_YYMM | ตัวนับเลขงานรายเดือน | ระบบ |
+| OPS_HUB_URL | URL ของ deployment `ingest` ของ Ops Hub (ไม่บังคับ ไม่ตั้ง = ไม่ส่ง heartbeat) | ผู้ใช้ |
+| OPS_TOKEN | token ของระบบนี้ในแท็บ Systems ของ Ops Hub | ผู้ใช้ |
+| OPS_SYSTEM_ID | `maintenance-prod` หรือ `maintenance-test` | ผู้ใช้ |
+
+**Ops Hub (เพิ่ม 6 พ.ย. 2026):** `gas/Ops.js` ส่งตัวเลขสรุปไปที่ Ops Hub ท้าย `Sla_tick` ทุกรอบ (Script Properties ครบไหม, งานค้างแยกตามสถานะ ไม่นับ DONE/CLOSED/CANCELLED, จำนวนแถว JobLog 24 ชม., โควตา LINE push เดือนนี้) และส่ง error เมื่อ `Sla_tick` ล้ม ไม่ส่งชื่อ userId เบอร์ หรือรูป ฟังก์ชันในไฟล์นี้ไม่ throw และอ่านชีตผ่าน `Repo_readAll` ทดสอบด้วย `Ops_test` ใน editor
 
 ## 6. API (`doPost`)
 
@@ -610,6 +615,7 @@ maintenance-line/
 │   ├── Repo.js          sheet access by header name + LockService
 │   ├── Drive.js         base64 → file, sharing
 │   ├── Triggers.js      Sla_tick, Triggers_install
+│   ├── Ops.js           Ops Hub heartbeat (Ops_heartbeat_, Ops_error_, Ops_test)
 │   ├── Setup.js         Setup_init, Setup_check, Setup_migrateLegacy
 │   ├── Dev.js           Dev_smokeTest, Dev_testFlexImage (ทำงานเฉพาะ ENV=test)
 │   └── core/            pure logic, Node-testable

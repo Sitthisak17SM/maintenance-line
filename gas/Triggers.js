@@ -8,8 +8,20 @@ const TRIGGERS_SLA_HANDLER = 'Sla_tick';
  * One pass: send R75/D75 to the technician and RB/DB to ADMINs, one push per person (a carousel
  * of all their jobs), then record the flags so the next tick does not repeat them. Also runs
  * auto_ack when Config AUTO_ACK_HOURS > 0.
+ * Each pass reports to Ops Hub (gas/Ops.js): a heartbeat on success, the error on failure.
  */
 function Sla_tick() {
+  try {
+    const result = Sla_tickRun_();
+    Ops_heartbeat_('sla_tick');
+    return result;
+  } catch (e) {
+    Ops_error_('sla_tick', e);
+    throw e;
+  }
+}
+
+function Sla_tickRun_() {
   Jobs_backfillPhotoLinksOnce_(); // one-time, after the photo link columns were added (2 Nov 2026)
   const now = new Date();
   const config = Jobs_config_();
