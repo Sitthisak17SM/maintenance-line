@@ -28,6 +28,7 @@ const OPS_QUOTA_ERROR_PCT = 95;
 /** Regular heartbeat (end of Sla_tick). */
 function Ops_heartbeat_(event, log) {
   try {
+    if (!Ops_configured_()) return; // no sheet reads or LINE calls until Ops Hub is set up
     const checks = [];
     Ops_try_(checks, 'Script Properties', Ops_checkProps_);
     Ops_try_(checks, 'งานค้าง (ยังไม่จบ)', Ops_checkOpenJobs_);
@@ -151,6 +152,11 @@ function Ops_send_(payload, returnResponse) {
     console.warn('Ops_send_', e);
     return 'ส่งไม่สำเร็จ: ' + e;
   }
+}
+
+function Ops_configured_() {
+  const p = PropertiesService.getScriptProperties();
+  return !!(p.getProperty('OPS_HUB_URL') && p.getProperty('OPS_TOKEN') && p.getProperty('OPS_SYSTEM_ID'));
 }
 
 function Ops_try_(checks, name, fn) {
