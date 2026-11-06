@@ -224,7 +224,7 @@
       const fix = el('textarea', { maxlength: 2000 });
       const partsBox = el('div', {});
       const total = el('strong', {}, fmtMoney(0));
-      const photos = photoPicker(ME.config.PHOTO_MAX_COUNT, ME.config.PHOTO_MAX_EDGE_PX, 'ถ่าย/เลือกรูปหลังซ่อม');
+      const photos = photoPicker(ME.config.PHOTO_MAX_COUNT, ME.config.PHOTO_MAX_EDGE_PX);
       const nobody = el('input', { type: 'checkbox' });
       const onsiteNote = el('textarea', { maxlength: 2000, placeholder: 'เช่น ร้านยังไม่เปิด ฝากกุญแจไว้กับ รปภ.' });
       const onsiteField = field('หมายเหตุหน้างาน', onsiteNote);

@@ -404,7 +404,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 - **ความเร่งด่วน:** radio พร้อมป้ายเวลาจาก SLA
 - **เบอร์โทร:** เติมให้จากข้อมูลลงทะเบียน
 - **รูป:** อย่างน้อย 1 รูปเมื่อ Config `REPORT_PHOTO_REQUIRED` เปิดอยู่ (ค่าเริ่มต้น บังคับตั้งแต่ 2 พ.ย. 2026) ไม่เกิน 4 รูป server ตรวจซ้ำใน `createJob` หน้าเว็บอ่านค่าจาก `me.config.REPORT_PHOTO_REQUIRED`
-  - ใช้ `accept="image/*"` และ `capture="environment"`
+  - มี 2 ปุ่ม: "ถ่ายรูป" (`accept="image/*"` + `capture="environment"` เปิดกล้องทันที) และ "คลังภาพ" (`accept="image/*"` + `multiple` เลือกรูปที่มีอยู่) ใช้ทั้งตอนแจ้งซ่อมและปิดงาน (AOF ตัดสินใจ 6 พ.ย. 2026)
   - ย่อด้วย canvas เป็น JPEG คุณภาพ 0.7 ให้ด้านยาวไม่เกิน 1280 px
 - **หลังส่งสำเร็จ:**
   - ถ้า `liff.isInClient()` และ `liff.getContext().type === 'utou'` ให้เรียก `liff.sendMessages([{type:'text', text: job_id}])` แล้ว `liff.closeWindow()`

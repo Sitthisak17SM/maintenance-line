@@ -34,12 +34,16 @@ function loadImage_(file) {
  * A photo picker with previews and remove buttons. Returns {node, photos()} where photos()
  * gives the [{mime, b64}] list for the API.
  */
-function photoPicker(maxCount, maxEdge, label) {
+function photoPicker(maxCount, maxEdge) {
   const items = [];
   const grid = el('div', { class: 'thumbs' });
   const msg = el('p', { class: 'msg err', hidden: true });
-  const input = el('input', { type: 'file', accept: 'image/*', capture: 'environment', multiple: true, class: 'visually-hidden' });
-  const addBtn = el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { input.click(); } });
+  // Two inputs: with capture the phone opens the camera directly; without it, the photo library.
+  const camera = el('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'visually-hidden' });
+  const library = el('input', { type: 'file', accept: 'image/*', multiple: true, class: 'visually-hidden' });
+  const cameraBtn = el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { camera.click(); } }, 'ถ่ายรูป');
+  const libraryBtn = el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { library.click(); } }, 'คลังภาพ');
+  const count = el('span', { class: 'hint' });
 
   function refresh() {
     clear(grid);
@@ -48,18 +52,18 @@ function photoPicker(maxCount, maxEdge, label) {
         el('img', { src: item.preview, alt: 'รูปที่ ' + (i + 1) }),
         el('button', { type: 'button', class: 'thumb-remove', 'aria-label': 'ลบรูป', onclick: function () { items.splice(i, 1); refresh(); } }, '×')));
     });
-    addBtn.textContent = (label || 'เพิ่มรูป') + ' (' + items.length + '/' + maxCount + ')';
-    addBtn.disabled = items.length >= maxCount;
+    count.textContent = 'แนบแล้ว ' + items.length + '/' + maxCount + ' รูป';
+    cameraBtn.disabled = libraryBtn.disabled = items.length >= maxCount;
   }
 
-  input.addEventListener('change', async function () {
+  async function onPick(input) {
     const files = Array.from(input.files || []);
     input.value = '';
     setMessage(msg, null);
     const room = maxCount - items.length;
     if (files.length > room) setMessage(msg, new Error('แนบรูปได้ไม่เกิน ' + maxCount + ' รูป ระบบเลือกให้ ' + room + ' รูปแรก'));
-    addBtn.disabled = true;
-    addBtn.textContent = 'กำลังย่อรูป…';
+    cameraBtn.disabled = libraryBtn.disabled = true;
+    count.textContent = 'กำลังย่อรูป…';
     for (const file of files.slice(0, room)) {
       try {
         items.push(await resizeImage(file, maxEdge));
@@ -68,11 +72,13 @@ function photoPicker(maxCount, maxEdge, label) {
       }
     }
     refresh();
-  });
+  }
+  camera.addEventListener('change', function () { onPick(camera); });
+  library.addEventListener('change', function () { onPick(library); });
 
   refresh();
   return {
-    node: el('div', { class: 'picker' }, grid, addBtn, input, msg),
+    node: el('div', { class: 'picker' }, grid, el('div', { class: 'btn-row' }, cameraBtn, libraryBtn), count, camera, library, msg),
     photos: function () { return items.map(function (p) { return { mime: p.mime, b64: p.b64 }; }); },
     count: function () { return items.length; },
   };

@@ -44,7 +44,7 @@
           el('input', { type: 'radio', name: 'priority', value: s.priority, checked: s.priority === 'NORMAL' || (i === 0 && !me.sla.some(function (x) { return x.priority === 'NORMAL'; })) }),
           priorityBadge(s.priority), el('span', {}, s.label_th));
       });
-      const photos = photoPicker(me.config.PHOTO_MAX_COUNT, me.config.PHOTO_MAX_EDGE_PX, 'ถ่าย/เลือกรูป');
+      const photos = photoPicker(me.config.PHOTO_MAX_COUNT, me.config.PHOTO_MAX_EDGE_PX);
       // Follows the server's flag (Config REPORT_PHOTO_REQUIRED); the server checks again on createJob.
       const photoRequired = me.config.REPORT_PHOTO_REQUIRED === true;
       const msg = el('p', { class: 'msg', hidden: true });
