@@ -45,6 +45,8 @@
           priorityBadge(s.priority), el('span', {}, s.label_th));
       });
       const photos = photoPicker(me.config.PHOTO_MAX_COUNT, me.config.PHOTO_MAX_EDGE_PX);
+      // Config VIDEO_MAX_MB 0 hides the video picker; the server refuses videos then too.
+      const video = me.config.VIDEO_MAX_MB > 0 ? videoPicker(me.config.VIDEO_MAX_MB) : null;
       // Follows the server's flag (Config REPORT_PHOTO_REQUIRED); the server checks again on createJob.
       const photoRequired = me.config.REPORT_PHOTO_REQUIRED === true;
       const msg = el('p', { class: 'msg', hidden: true });
@@ -80,6 +82,7 @@
         field('เบอร์โทรติดต่อ', phone),
         el('div', { class: 'field' }, el('span', { class: 'label' },
           'รูป (' + (photoRequired ? 'อย่างน้อย 1 รูป ' : '') + 'ไม่เกิน ' + me.config.PHOTO_MAX_COUNT + ' รูป)'), photos.node),
+        video ? el('div', { class: 'field' }, el('span', { class: 'label' }, 'วิดีโอ'), video.node) : null,
         msg, submit);
 
       form.addEventListener('submit', async function (e) {
@@ -93,11 +96,13 @@
         if (!priority) return invalid(msg, 'กรุณาเลือกความเร่งด่วน', form.querySelector('input[name=priority]'));
         if (photoRequired && !photos.count()) return invalid(msg, 'กรุณาแนบรูปอย่างน้อย 1 รูป', photos.node);
 
-        const result = await busy(submit, msg, photos.count() ? 'กำลังส่งรูปและบันทึก…' : 'กำลังบันทึก…', function () {
+        const clip = video ? video.video() : null;
+        const wait = clip ? 'กำลังส่งวิดีโอ… อย่าเพิ่งปิดหน้านี้' : photos.count() ? 'กำลังส่งรูปและบันทึก…' : 'กำลังบันทึก…';
+        const result = await busy(submit, msg, wait, function () {
           return api('createJob', {
             branch_code: branch.value, area: areaValue, category_code: category.value,
             title: title.value, detail: detail.value, priority: priority, phone: phone.value,
-            photos: photos.photos(),
+            photos: photos.photos(), video: clip,
           });
         });
         if (!result) return;

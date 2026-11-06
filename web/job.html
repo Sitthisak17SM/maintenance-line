@@ -81,8 +81,10 @@
           isTrue(job.ext_pending) ? row('ขอเลื่อนเป็น', el('span', { class: 'err' }, fmtDate(job.ext_requested_due_at) + ' (รออนุมัติ)')) : null,
           Number(job.ext_count) ? row('เลื่อนกำหนดแล้ว', job.ext_count + ' ครั้ง') : null),
         photoSection('รูปก่อนซ่อม', data.photos_before_urls),
+        videoSection('วิดีโอก่อนซ่อม', data.video_before_url, job.video_before_link),
         resultSection(job, data.parts),
         photoSection('รูปหลังซ่อม', data.photos_after_urls),
+        videoSection('วิดีโอหลังซ่อม', data.video_after_url, job.video_after_link),
         actions(job, can, openForm),
         logSection(data.log),
       ];
@@ -97,6 +99,16 @@
       return [el('h2', {}, title), el('div', { class: 'photos' }, urls.map(function (u, i) {
         return el('a', { href: u.replace(/sz=w\d+/, 'sz=w2000'), target: '_blank', rel: 'noopener' }, el('img', { src: u, alt: title + ' ' + (i + 1), loading: 'lazy' }));
       }))];
+    }
+
+    // Drive's player in an iframe. Right after upload Drive is still processing the clip, so
+    // the link opens it in Drive as a fallback.
+    function videoSection(title, previewUrl, viewUrl) {
+      if (!previewUrl) return null;
+      return [el('h2', {}, title),
+        el('iframe', { class: 'video-frame', src: previewUrl, allow: 'autoplay; fullscreen', allowfullscreen: true, title: title }),
+        viewUrl ? el('p', { class: 'hint' }, 'ถ้ายังเล่นไม่ได้ Drive อาจกำลังประมวลผลวิดีโอ รอสักครู่หรือ ',
+          el('a', { href: viewUrl, target: '_blank', rel: 'noopener' }, 'เปิดใน Google Drive')) : null];
     }
 
     function resultSection(job, parts) {
@@ -225,6 +237,7 @@
       const partsBox = el('div', {});
       const total = el('strong', {}, fmtMoney(0));
       const photos = photoPicker(ME.config.PHOTO_MAX_COUNT, ME.config.PHOTO_MAX_EDGE_PX);
+      const video = ME.config.VIDEO_MAX_MB > 0 ? videoPicker(ME.config.VIDEO_MAX_MB) : null;
       const nobody = el('input', { type: 'checkbox' });
       const onsiteNote = el('textarea', { maxlength: 2000, placeholder: 'เช่น ร้านยังไม่เปิด ฝากกุญแจไว้กับ รปภ.' });
       const onsiteField = field('หมายเหตุหน้างาน', onsiteNote);
@@ -263,6 +276,7 @@
           el('button', { type: 'button', class: 'btn btn-secondary', onclick: function () { partsBox.appendChild(partRow()); } }, '+ เพิ่มรายการ'),
           el('p', {}, 'รวม ', total)),
         el('div', { class: 'field' }, el('span', { class: 'label' }, 'รูปหลังซ่อม (อย่างน้อย 1 รูป)'), photos.node),
+        video ? el('div', { class: 'field' }, el('span', { class: 'label' }, 'วิดีโอหลังซ่อม'), video.node) : null,
         el('label', { class: 'choice' }, nobody, el('span', {}, 'ไม่มีคนอยู่หน้างาน')),
         onsiteField,
         msg, submit);
@@ -274,10 +288,11 @@
         if (bad) return invalid(msg, 'กรุณากรอกรายการ จำนวน และราคาของอะไหล่ให้ครบ', partsBox);
         if (!photos.count()) return invalid(msg, 'กรุณาแนบรูปหลังซ่อมอย่างน้อย 1 รูป', photos.node);
         if (nobody.checked && !onsiteNote.value.trim()) return invalid(msg, 'ไม่มีคนอยู่หน้างาน กรุณากรอกหมายเหตุ', onsiteNote);
-        const ok = await busy(submit, msg, 'กำลังส่งรูปและบันทึก…', function () {
+        const clip = video ? video.video() : null;
+        const ok = await busy(submit, msg, clip ? 'กำลังส่งวิดีโอ… อย่าเพิ่งปิดหน้านี้' : 'กำลังส่งรูปและบันทึก…', function () {
           return api('closeJob', {
             job_id: job.job_id, cause: cause.value, fix: fix.value, parts: parts,
-            photos: photos.photos(), onsite_note: nobody.checked ? onsiteNote.value : '',
+            photos: photos.photos(), video: clip, onsite_note: nobody.checked ? onsiteNote.value : '',
           });
         });
         if (ok) after(ok);

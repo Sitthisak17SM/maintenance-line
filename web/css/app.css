@@ -116,3 +116,5 @@ textarea { min-height: 88px; resize: vertical; }
 .part { border: 1px solid #d0d7de; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
 .part-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .panel { border-top: 1px solid #eef0f3; margin-top: 16px; padding-top: 8px; }
+.video-preview { position: relative; margin-bottom: 4px; }
+.video-preview video, .video-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 6px; background: #000; }
