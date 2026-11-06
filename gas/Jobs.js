@@ -16,8 +16,11 @@ const JOBS_TAB_CACHE_SECONDS = 300;
 let Jobs_config_cache_ = null;
 let Jobs_tab_cache_ = {};
 
-// Clickable Drive links next to the photo file ids (2 Nov 2026), written whenever the ids are.
-const JOBS_PHOTO_LINKS = { photos_before: 'photos_before_links', photos_after: 'photos_after_links' };
+// Clickable Drive links next to the photo and video file ids (2 Nov 2026), written whenever the ids are.
+const JOBS_PHOTO_LINKS = {
+  photos_before: 'photos_before_links', photos_after: 'photos_after_links',
+  video_before: 'video_before_link', video_after: 'video_after_link', // 6 Nov 2026
+};
 // v2 (3 Nov 2026): re-run once so existing cells become rich text with one link per line.
 const JOBS_PHOTO_LINKS_DONE_KEY = 'PHOTO_LINKS_RICH_BACKFILLED';
 let Jobs_photoColumns_ok_ = false;
@@ -121,12 +124,21 @@ function Jobs_create(actor, data) {
   if (phone && !JOBS_PHONE_RE.test(phone)) throw Status_error('VALIDATION', 'เบอร์โทรไม่ถูกต้อง');
   const photos = Drive_decodePhotos(data.photos, Number(config.PHOTO_MAX_COUNT) || 4);
   if (!photos.length && Jobs_reportPhotoRequired_(config)) throw Status_error('VALIDATION', 'กรุณาแนบรูปอย่างน้อย 1 รูป');
+  const video = Drive_decodeVideo(data.video, config.VIDEO_MAX_MB);
 
   const route = Routing_route(category, Jobs_tab_('Users'));
   const t = Status_transition(null, 'create', actor, { now: now, candidate_ids: route.candidate_ids });
   const due = Sla_computeDueDates(now, priority, slaRows);
   const jobId = Repo_nextJobId(String(config.JOB_ID_PREFIX || 'MT').trim(), now);
   const photoIds = Drive_savePhotos(jobId, 'before', photos, now);
+  let videoId = '';
+  try {
+    videoId = Drive_saveVideo(jobId, 'before', video, now);
+  } catch (err) {
+    Drive_trashFiles(photoIds);
+    throw err;
+  }
+  const fileIds = videoId ? photoIds.concat([videoId]) : photoIds;
 
   const job = Object.assign({
     job_id: jobId,
@@ -141,6 +153,7 @@ function Jobs_create(actor, data) {
     reporter_name: actor.name,
     reporter_phone: phone || actor.phone,
     photos_before: photoIds.join(','),
+    video_before: videoId,
     route_to: route.route_to,
     vendor: '',
     response_due_at: due.response_due_at,
@@ -160,7 +173,7 @@ function Jobs_create(actor, data) {
       Repo_appendJobLog(jobId, actor, t.log, now);
     });
   } catch (err) {
-    if (!saved) Drive_trashFiles(photoIds); // the job was not saved, so its photos would be orphans
+    if (!saved) Drive_trashFiles(fileIds); // the job was not saved, so its files would be orphans
     throw err;
   }
   Jobs_notifyNew_(job, route.candidate_ids, '');
@@ -181,6 +194,8 @@ function Jobs_get(actor, jobId) {
     status_label: STATUS_LABEL_TH[job.status] || job.status,
     photos_before_urls: Jobs_ids_(job.photos_before).map(Drive_thumbnailUrl),
     photos_after_urls: Jobs_ids_(job.photos_after).map(Drive_thumbnailUrl),
+    video_before_url: job.video_before ? Drive_videoPreviewUrl(job.video_before) : '',
+    video_after_url: job.video_after ? Drive_videoPreviewUrl(job.video_after) : '',
     parts: Repo_findAllBy('Parts', 'job_id', job.job_id)
       .sort(function (a, b) { return Number(a.line_no) - Number(b.line_no); }),
     log: Repo_findAllBy('JobLog', 'job_id', job.job_id).map(function (l) {
@@ -278,7 +293,7 @@ function Jobs_checkin(actor, jobId) {
   return Jobs_result_(Jobs_transition_(actor, jobId, 'checkin', {}).job);
 }
 
-/** data: {cause, fix, parts[], photos[], onsite_note}. Photos are saved only after the checks pass. */
+/** data: {cause, fix, parts[], photos[], video, onsite_note}. Files are saved only after the checks pass. */
 function Jobs_close(actor, jobId, data) {
   data = data || {};
   const current = Repo_findJob(jobId);
@@ -286,14 +301,21 @@ function Jobs_close(actor, jobId, data) {
   Status_assertCan(current.job, 'close', actor); // FORBIDDEN before photo errors (PLAN §3)
   const config = Jobs_config_();
   const photos = Drive_decodePhotos(data.photos, Number(config.PHOTO_MAX_COUNT) || 4);
+  const video = Drive_decodeVideo(data.video, config.VIDEO_MAX_MB);
   const input = { cause: data.cause, fix: data.fix, parts: data.parts, onsite_note: data.onsite_note };
 
   // Dry run without the lock, so a rejected request leaves no orphan files in Drive.
   Status_transition(current.job, 'close', actor, Object.assign({
-    now: new Date(), photos_after: photos.map(function (p, i) { return 'pending' + i; }),
+    now: new Date(), photos_after: photos.map(function (p, i) { return 'pending' + i; }), video_after: video ? 'pending' : '',
   }, input));
 
   input.photos_after = Drive_savePhotos(current.job.job_id, 'after', photos, new Date());
+  try {
+    input.video_after = Drive_saveVideo(current.job.job_id, 'after', video, new Date());
+  } catch (err) {
+    Drive_trashFiles(input.photos_after);
+    throw err;
+  }
   const progress = { jobWritten: false };
   let r;
   try {
@@ -301,7 +323,7 @@ function Jobs_close(actor, jobId, data) {
   } catch (err) {
     // The locked re-check can still fail (job changed meanwhile, lock timeout); drop the files,
     // unless the Jobs row was already updated to point at them.
-    if (!progress.jobWritten) Drive_trashFiles(input.photos_after);
+    if (!progress.jobWritten) Drive_trashFiles(input.video_after ? input.photos_after.concat([input.video_after]) : input.photos_after);
     throw err;
   }
   Jobs_notifyDone_(r.job);
@@ -433,8 +455,9 @@ function Jobs_photoLinks_(fields) {
   return out;
 }
 
+/** The link columns, plus the video id columns (added 6 Nov 2026, so older sheets lack them). */
 function Jobs_photoLinkColumns_() {
-  return Object.keys(JOBS_PHOTO_LINKS).map(function (k) { return JOBS_PHOTO_LINKS[k]; });
+  return ['video_before', 'video_after'].concat(Object.keys(JOBS_PHOTO_LINKS).map(function (k) { return JOBS_PHOTO_LINKS[k]; }));
 }
 
 /**

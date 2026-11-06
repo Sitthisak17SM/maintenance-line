@@ -31,6 +31,7 @@ function Flex_jobNew(job, ref, opts) {
     Flex_text_('หมวด: ' + (ref.categoryName || job.category_code), { size: 'sm', color: FLEX_MUTED }),
     Flex_text_(job.title, { weight: 'bold', size: 'md' }),
     job.detail ? Flex_text_(Flex_truncate_(job.detail, FLEX_DETAIL_MAX), { size: 'sm' }) : null,
+    Flex_videoNote_(job.video_before),
     Flex_separator_(),
     Flex_text_('ผู้แจ้ง: ' + (job.reporter_name || '-') + (job.reporter_phone ? ' (' + job.reporter_phone + ')' : '') +
       ' · ' + Flex_date(job.created_at), { size: 'xs', color: FLEX_MUTED }),
@@ -158,6 +159,7 @@ function Flex_jobDone(job, ref) {
       Flex_text_('วิธีแก้ไข: ' + job.fix, { size: 'sm' }),
       Flex_text_('ค่าใช้จ่าย: ' + cost.toLocaleString('en-US') + ' บาท', { size: 'sm' }),
       job.onsite_note ? Flex_text_('หมายเหตุ: ' + job.onsite_note, { size: 'sm', color: FLEX_MUTED }) : null,
+      Flex_videoNote_(job.video_after),
       Flex_text_('ช่าง: ' + (job.assignee_name || job.vendor || '-') + ' · ' + Flex_date(job.done_at), { size: 'xs', color: FLEX_MUTED }),
     ]),
     footer: Flex_box_([
@@ -333,6 +335,11 @@ function Flex_box_(contents) {
 function Flex_text_(text, style) {
   const value = String(text === undefined || text === null ? '' : text).trim();
   return Object.assign({ type: 'text', text: value || '-', wrap: true }, style || {});
+}
+
+/** A card cannot play a Drive video, so it says there is one and the details page plays it. */
+function Flex_videoNote_(videoId) {
+  return videoId ? Flex_text_('มีวิดีโอแนบ กด "รายละเอียด" เพื่อดู', { size: 'sm', color: '#1565C0', weight: 'bold' }) : null;
 }
 
 function Flex_separator_() {

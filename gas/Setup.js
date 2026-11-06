@@ -15,6 +15,7 @@ const SETUP_TABS = {
     'reject_count', 'ext_count', 'cause', 'fix', 'cost_total', 'photos_after', 'onsite_note',
     'ack_by', 'ack_at', 'alert_flags', 'is_repeat', 'related_job_id', 'source', 'updated_at',
     'photos_before_links', 'photos_after_links', // clickable Drive URLs, one per line (2 Nov 2026)
+    'video_before', 'video_after', 'video_before_link', 'video_after_link', // one optional clip each (6 Nov 2026)
   ],
   JobLog: ['log_id', 'job_id', 'at', 'actor_id', 'actor_name', 'action', 'from_status', 'to_status', 'reason', 'old_value', 'new_value'],
   Parts: ['job_id', 'line_no', 'item', 'qty', 'unit_price', 'amount', 'vendor', 'note'],
@@ -37,7 +38,7 @@ const SETUP_TEXT_COLUMNS = {
   Jobs: [
     'job_id', 'area', 'title', 'detail', 'reporter_id', 'reporter_name', 'reporter_phone', 'photos_before',
     'candidate_ids', 'assignee_id', 'assignee_name', 'vendor', 'ext_reason', 'cause', 'fix', 'photos_after',
-    'onsite_note', 'ack_by', 'alert_flags', 'related_job_id',
+    'onsite_note', 'ack_by', 'alert_flags', 'related_job_id', 'video_before', 'video_after',
   ],
   JobLog: ['log_id', 'job_id', 'actor_id', 'actor_name', 'reason', 'old_value', 'new_value'],
   Parts: ['job_id', 'item', 'vendor', 'note'],
@@ -95,7 +96,7 @@ const SETUP_SEED = {
     ['PHOTO_MAX_COUNT', '4', 'ต่อการส่ง 1 ครั้ง'],
     ['REPORT_PHOTO_REQUIRED', 'TRUE', 'บังคับแนบรูปอย่างน้อย 1 รูปตอนแจ้งซ่อม (ไม่มีแถวนี้ = TRUE)'],
     ['PHOTO_MAX_EDGE_PX', '1280', 'ย่อด้านยาวก่อนอัปโหลด'],
-    ['VIDEO_MAX_MB', '0', '0 = ยังไม่รับวิดีโอ (เปิดในเฟส 2 หลังทดสอบ)'],
+    ['VIDEO_MAX_MB', '0', 'วิดีโอ 1 คลิปต่อการส่ง ไม่เกินกี่ MB (0 = ปิดรับวิดีโอ, AOF เลือก 20)'],
     ['FLEX_SHOW_PHOTO', 'TRUE', 'แสดงรูปแรกบนการ์ด job_new (ไม่มีแถวนี้ = TRUE)'],
   ],
 };

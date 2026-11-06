@@ -312,6 +312,12 @@ test('close requires at least one After photo; cause and fix are optional', () =
   assert.equal(run(job('ACCEPTED'), 'close', U.tech1, { cause: undefined, fix: undefined }).status, 'DONE');
 });
 
+// One optional clip after the repair (AOF, 6 Nov 2026).
+test('close records the optional After video id', () => {
+  assert.equal(run(job('ACCEPTED'), 'close', U.tech1, { video_after: ' V1 ' }).fields.video_after, 'V1');
+  assert.equal(run(job('ACCEPTED'), 'close', U.tech1, {}).fields.video_after, '');
+});
+
 test('close trims and caps cause and fix', () => {
   const r = run(job('ACCEPTED'), 'close', U.tech1, { cause: '  หลอดขาด ', fix: 'x'.repeat(3000) });
   assert.equal(r.fields.cause, 'หลอดขาด');

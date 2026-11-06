@@ -229,7 +229,8 @@ const Status_apply_ = {
   },
 
   // input: cause, fix (optional since 30 Oct 2026, see REQUIREMENTS R12), parts
-  // [{item, qty, unit_price, vendor, note}], photos_after (file IDs, at least 1, PLAN §9), onsite_note.
+  // [{item, qty, unit_price, vendor, note}], photos_after (file IDs, at least 1, PLAN §9), video_after
+  // (optional file ID), onsite_note.
   close: function (job, actor, input, now) {
     const cause = String(input.cause || '').trim().slice(0, STATUS_TEXT_MAX);
     const fix = String(input.fix || '').trim().slice(0, STATUS_TEXT_MAX);
@@ -244,6 +245,7 @@ const Status_apply_ = {
       fields: {
         done_at: now, cause: cause, fix: fix, cost_total: total,
         photos_after: photos.join(','),
+        video_after: String(input.video_after || '').trim(), // optional file ID (PLAN §12)
         onsite_note: String(input.onsite_note || '').trim().slice(0, STATUS_TEXT_MAX),
         ext_pending: false,
       },

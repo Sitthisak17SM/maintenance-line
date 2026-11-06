@@ -1,4 +1,4 @@
-// Photo storage (PLAN §12): base64 -> Drive file in DRIVE_FOLDER_ID/YYYY-MM/.
+// Photo and video storage (PLAN §12): base64 -> Drive file in DRIVE_FOLDER_ID/YYYY-MM/.
 
 const DRIVE_MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 // JPEG only: the LIFF pages always re-encode to JPEG (PLAN §9) and files are named .jpg (§12).
@@ -62,6 +62,38 @@ function Drive_savePhotos(jobId, kind, decoded, when) {
   return ids;
 }
 
+/**
+ * The request's optional video ({mime, b64}) -> {mime, bytes}, or null when there is none.
+ * Throws VALIDATION when videos are off (Config VIDEO_MAX_MB 0), or for a wrong type or size.
+ */
+function Drive_decodeVideo(video, maxMb) {
+  if (video === undefined || video === null || video === '') return null;
+  if (typeof video !== 'object') throw Status_error('VALIDATION', 'รูปแบบวิดีโอไม่ถูกต้อง');
+  const mime = String(video.mime || '').toLowerCase();
+  let bytes;
+  try {
+    bytes = Utilities.base64Decode(String(video.b64 || '').replace(/^data:[^,]*,/, ''));
+  } catch (err) {
+    throw Status_error('VALIDATION', 'วิดีโอ: ข้อมูลไฟล์เสีย');
+  }
+  const problem = Media_videoProblem(mime, bytes, maxMb);
+  if (problem) throw Status_error('VALIDATION', problem);
+  return { mime: mime, bytes: bytes };
+}
+
+/** Saves a decoded video as {job_id}_{kind}_video.{mp4|mov}, shared like the photos. Returns its file ID or ''. */
+function Drive_saveVideo(jobId, kind, decoded, when) {
+  if (!decoded) return '';
+  const name = jobId + '_' + kind + '_video.' + Media_videoExt(decoded.mime);
+  const file = Drive_monthFolder_(when).createFile(Utilities.newBlob(decoded.bytes, decoded.mime, name));
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    console.warn('Cannot share %s: %s', name, err);
+  }
+  return file.getId();
+}
+
 /** Moves files saved for a request that then failed to the trash. Never throws. */
 function Drive_trashFiles(fileIds) {
   (fileIds || []).forEach(function (id) {
@@ -79,6 +111,11 @@ function Drive_trashFiles(fileIds) {
  */
 function Drive_viewUrls(fileIds) {
   return (fileIds || []).map(function (id) { return 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view'; }).join('\n');
+}
+
+/** Drive's video player, for an <iframe> in job.html. Drive needs a few minutes after upload before it plays. */
+function Drive_videoPreviewUrl(fileId) {
+  return 'https://drive.google.com/file/d/' + encodeURIComponent(fileId) + '/preview';
 }
 
 /** URL for <img> in LIFF pages (PLAN §12). */
