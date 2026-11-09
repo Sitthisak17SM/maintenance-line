@@ -1,6 +1,8 @@
 name: Deploy Apps Script
 
-# Push to main deploys to test only. Prod requires a manual run with target=prod.
+# Push to main deploys to test only, and only while the repository variable TEST_ENABLED is
+# "true" (test switched off 9 Nov 2026). Prod requires a manual run with target=prod; a manual
+# run with target=test still works.
 on:
   push:
     branches: [main]
@@ -23,6 +25,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || vars.TEST_ENABLED == 'true'
     runs-on: ubuntu-latest
     env:
       IS_PROD: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'prod' }}

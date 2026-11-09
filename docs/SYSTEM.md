@@ -43,6 +43,8 @@
 
 ## 2. ระบบจริง (prod) กับระบบทดสอบ (test)
 
+> **ระบบ test ปิดอยู่ตั้งแต่ 9 พ.ย. 2026** วิธีเปิดกลับอยู่ใน PLAN §16
+
 | | prod | test |
 |---|---|---|
 | LINE OA | @905mjiho | @475lnsdz |
@@ -115,8 +117,8 @@
 | ไฟล์ | ทำอะไร |
 |---|---|
 | `tests/*.test.js` | unit test ของ `gas/core/` รันด้วย `node --test` |
-| `.github/workflows/deploy-gas.yml` | push ขึ้น `main` แล้ว deploy Apps Script ไป **test** ส่วน prod ต้องสั่งรันเองด้วย `target=prod` |
-| `.github/workflows/deploy-web.yml` | push ขึ้น `main` แล้ว deploy หน้าเว็บทั้ง prod (`/`) และ test (`/test/`) **ทันที** |
+| `.github/workflows/deploy-gas.yml` | push ขึ้น `main` แล้ว deploy Apps Script ไป **test** (เฉพาะตอน variable `TEST_ENABLED = true` ตอนนี้ปิดอยู่) ส่วน prod ต้องสั่งรันเองด้วย `target=prod` |
+| `.github/workflows/deploy-web.yml` | push ขึ้น `main` แล้ว deploy หน้าเว็บ prod (`/`) **ทันที** และ test (`/test/`) เฉพาะตอน `TEST_ENABLED = true` |
 | `.clasp.json` | ผูก repo กับโปรเจกต์ Apps Script (`rootDir: gas`) |
 | `assets/richmenu.png` | รูป rich menu ของ OA |
 | `CLAUDE.md` | กติกาของโปรเจกต์สำหรับ Claude Code |

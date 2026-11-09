@@ -649,6 +649,8 @@ maintenance-line/
 
 - เฟส 0–1 มีแค่ environment เดียวคือ test ประกอบด้วย OA ทดสอบ ชีตทดสอบ และ Apps Script ทดสอบ
 - ก่อน pilot ให้เพิ่ม prod เป็นชุดแยก ได้แก่ Apps Script ตัวใหม่ ชีตจริง และ OA จริง
+- **ปิด test (AOF สั่ง 9 พ.ย. 2026):** repository variable `TEST_ENABLED` ไม่ได้ตั้ง (หรือไม่ใช่ `true`) แปลว่า test ปิด: push ไม่ deploy Apps Script test และหน้าเว็บไม่มี `/test/` ส่วนที่ AOF ปิดเองในเว็บ: ลบ trigger `Sla_tick` ของโปรเจกต์ test และปิด webhook ของ OA test โค้ด ชีต และ OA ของ test ยังอยู่ครบ
+  - **เปิด test กลับ:** ตั้ง variable `TEST_ENABLED = true` แล้วรัน `deploy-web.yml` และ `deploy-gas.yml` (target=test) เปิด webhook ของ OA test และรัน `Triggers_install` ใน editor ของ test
 
 **`deploy-gas.yml`**
 
@@ -656,7 +658,7 @@ maintenance-line/
 - ใช้ Node 22 แล้วรัน `npm install -g @google/clasp`
 - เขียน `~/.clasprc.json` จาก secret `CLASPRC_JSON`
 - รัน `clasp push -f` ตามด้วย `clasp update-deployment $DEPLOYMENT_ID`
-- push ขึ้น main แล้ว deploy ไป test เท่านั้น
+- push ขึ้น main แล้ว deploy ไป test เท่านั้น และเฉพาะตอน `TEST_ENABLED = true` (ปิดตั้งแต่ 9 พ.ย. 2026) กดรันเองด้วย `target=test` ได้เสมอ
 - deploy ไป prod ต้องกดรันเอง (`workflow_dispatch` กับ input `target=prod`)
     - workflow เขียนทับ `scriptId` ใน `.clasp.json` ด้วย secret `SCRIPT_ID_PROD`
     - ใช้ `DEPLOYMENT_ID_PROD` แทน `DEPLOYMENT_ID`
@@ -664,7 +666,7 @@ maintenance-line/
 **`deploy-web.yml`**
 
 - deploy `web/` ขึ้น GitHub Pages
-- พอมี prod แล้ว ให้ build เป็น `_site/` (config ของ prod) กับ `_site/test/` (config ของ test) workflow ทำแบบนี้เสมอ ถ้ายังไม่ได้ตั้ง `LIFF_ID_PROD` ทั้ง `/` และ `/test/` ใช้ config ทดสอบใน `web/js/config.js` ส่วน `LIFF_ID_TEST`/`API_URL_TEST` ถ้าตั้งไว้จะใช้แทนค่าในไฟล์สำหรับ `/test/`
+- พอมี prod แล้ว ให้ build เป็น `_site/` (config ของ prod) กับ `_site/test/` (config ของ test, เฉพาะตอน `TEST_ENABLED = true`) ถ้ายังไม่ได้ตั้ง `LIFF_ID_PROD` ทั้ง `/` และ `/test/` ใช้ config ทดสอบใน `web/js/config.js` ส่วน `LIFF_ID_TEST`/`API_URL_TEST` ถ้าตั้งไว้จะใช้แทนค่าในไฟล์สำหรับ `/test/`
 - ค่า config มาจาก repository variables: `LIFF_ID_PROD`, `API_URL_PROD`, `LIFF_ID_TEST`, `API_URL_TEST`
 
 ## 17. การทดสอบ
