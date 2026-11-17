@@ -191,7 +191,7 @@ Time trigger ทุก 15 นาที ──▶ Sla_tick()
 | ENV | test | test หรือ prod |
 | JOB_ID_PREFIX | MT | |
 | AUTO_ACK_HOURS | 0 | 0 = ไม่ปิดงานอัตโนมัติ |
-| NOTIFY_REPORTER_ON_ACCEPT | TRUE | push แจ้งผู้แจ้งตอนช่างรับงาน (การ์ด job_accepted) ไม่มีแถวหรือว่าง = TRUE |
+| NOTIFY_REPORTER_ON_ACCEPT | TRUE | push แจ้งผู้แจ้งตอนช่างรับงาน (การ์ด job_accepted) ไม่มีแถวหรือว่าง = TRUE ชีตจริงตั้ง FALSE (AOF 17 พ.ย. 2026 เพื่อประหยัดโควตา LINE) |
 | NOTIFY_TECH_ON_ACK | TRUE | push แจ้งช่างเมื่องานที่ปิดแบบไม่มีคนอยู่หน้างานถูกรับทราบ (การ์ด job_acked) ไม่มีแถวหรือว่าง = TRUE |
 | REMIND_AT_PERCENT | 75 | เตือนเมื่อใช้เวลาไปถึงกี่ % |
 | ACCEPT_TARGET_HOURS | 1 | Dashboard: เป้าเวลาที่ช่างควรกดรับงาน (ชั่วโมง) ไม่มีแถวหรือว่าง = 1 |
@@ -470,6 +470,7 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 - **ระยะซ่อม** (สถานะ ACCEPTED หรือ IN_PROGRESS)
   - **D75:** ถึง 75% ของช่วง created_at ถึง due_at เตือน assignee
   - **DB:** เกิน due_at แล้ว เตือน ADMIN
+- **ไม่เตือนซ้ำคนเดิม (AOF 17 พ.ย. 2026 เพื่อประหยัดโควตา LINE):** ADMIN ที่เป็น assignee หรือ candidates ของงานนั้นและได้ R75 (หรือ D75) ไปแล้วในรอบก่อน จะไม่ได้ RB (หรือ DB) ของงานนั้นอีก ADMIN คนอื่นยังได้ตามปกติ ถ้า R75 กับ RB ถึงพร้อมกันในรอบเดียวยังส่ง RB เพื่อให้การ์ดขึ้นว่าเลยกำหนด (`Sla_alertRecipients` ใน `core/Sla.js`)
 - **ปิดอัตโนมัติ:** งานสถานะ DONE ที่ AUTO_ACK_HOURS > 0 และเลยเวลาแล้ว ให้ทำ auto_ack
 - **Flag:** ต่อท้ายใน `alert_flags` เพื่อไม่ให้เตือนซ้ำ set_priority ล้างทุก flag ส่วนการขอเลื่อนที่อนุมัติล้าง D75 และ DB
 - **การรวมข้อความ:** รวมทุกงานของผู้รับคนเดียวกันในรอบเดียวเป็น push เดียว (carousel ละไม่เกิน 12 งาน สูงสุด 5 ข้อความต่อ push เกินจากนั้นสรุปเป็น "และอีก N งาน")
@@ -481,6 +482,7 @@ job.route_to = category.route_to; job.candidate_ids = candidates
 
 - `Sla_computeDueDates(createdAt, priority, slaRows)` คืน `{response_due_at, due_at}`
 - `Sla_pendingAlerts(job, now, remindPct)` คืน flag ที่ต้องส่งในรอบนี้ (ไม่รวม flag ที่เคยส่งแล้ว)
+- `Sla_alertRecipients(flag, holders, admins, sentFlags)` คืน userId ที่ต้องเตือนสำหรับ flag นั้น
 
 ## 12. รูปและไฟล์ (Drive)
 

@@ -47,8 +47,7 @@ function Sla_tickRun_() {
     due[job.job_id] = flags;
     const holders = String(job.assignee_id || '').trim() ? [String(job.assignee_id).trim()] : Jobs_ids_(job.candidate_ids);
     flags.forEach(function (f) {
-      if (f === 'R75' || f === 'D75') holders.forEach(function (id) { add(id, job, f); });
-      else admins.forEach(function (id) { add(id, job, f); });
+      Sla_alertRecipients(f, holders, admins, job.alert_flags).forEach(function (id) { add(id, job, f); });
     });
   });
 

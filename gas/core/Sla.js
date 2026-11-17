@@ -60,6 +60,27 @@ function Sla_pendingAlerts(job, now, remindPct) {
   return out.filter(function (f) { return sent.indexOf(f) === -1; });
 }
 
+/** The reminder each breach flag escalates (PLAN §11). */
+const SLA_REMINDER_OF = { RB: 'R75', DB: 'D75' };
+
+/**
+ * userIds to alert for one flag of a job. holders: assignee or candidates; admins: active ADMINs;
+ * sentFlags: the job's alert_flags before this tick.
+ * R75/D75 go to the holders. RB/DB go to the ADMINs, except an ADMIN who holds the job and already
+ * got its reminder in an earlier tick (17 Nov 2026, saves LINE quota while ADMINs are the
+ * candidates). When reminder and breach fall in the same tick the breach is kept, so the card
+ * shows the job as overdue.
+ */
+function Sla_alertRecipients(flag, holders, admins, sentFlags) {
+  if (flag === 'R75' || flag === 'D75') return (holders || []).slice();
+  const reminder = SLA_REMINDER_OF[flag];
+  if (!reminder) return [];
+  const reminded = Sla_flags(sentFlags).indexOf(reminder) !== -1;
+  return (admins || []).filter(function (id) {
+    return !(reminded && (holders || []).indexOf(id) !== -1);
+  });
+}
+
 /** True when a DONE job has waited AUTO_ACK_HOURS since done_at (0 or blank = never). */
 function Sla_autoAckDue(job, now, hours) {
   const h = Number(hours);
@@ -88,5 +109,5 @@ function Sla_time_(value) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { SLA_FLAGS, Sla_computeDueDates, Sla_pendingAlerts, Sla_autoAckDue, Sla_flags, Sla_addFlags };
+  module.exports = { SLA_FLAGS, Sla_computeDueDates, Sla_pendingAlerts, Sla_alertRecipients, Sla_autoAckDue, Sla_flags, Sla_addFlags };
 }

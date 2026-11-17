@@ -127,3 +127,34 @@ test('Sla_addFlags keeps order and drops duplicates', () => {
   assert.equal(Sla_addFlags('D75', ['D75', 'DB']), 'D75,DB');
   assert.equal(Sla_addFlags('R75,RB', []), 'R75,RB');
 });
+
+// --- Sla_alertRecipients (PLAN §11, 17 Nov 2026: no breach alert to an ADMIN who already got the reminder) ---
+
+const { Sla_alertRecipients } = require('../gas/core/Sla.js');
+
+test('Sla_alertRecipients: reminders go to the holders, breaches to the ADMINs', () => {
+  assert.deepEqual(Sla_alertRecipients('R75', ['T1'], ['A1', 'A2'], ''), ['T1']);
+  assert.deepEqual(Sla_alertRecipients('D75', ['T1'], ['A1'], 'R75,RB'), ['T1']);
+  assert.deepEqual(Sla_alertRecipients('RB', ['T1'], ['A1', 'A2'], 'R75'), ['A1', 'A2']);
+  assert.deepEqual(Sla_alertRecipients('DB', ['T1'], ['A1'], 'D75'), ['A1']);
+});
+
+test('Sla_alertRecipients: an ADMIN holding the job gets no breach alert after the reminder', () => {
+  // Both ADMINs are the candidates (no TECH left): RB would repeat the R75 they already got.
+  assert.deepEqual(Sla_alertRecipients('RB', ['A1', 'A2'], ['A1', 'A2'], 'R75'), []);
+  // Only the holding ADMIN is skipped; the other ADMIN still hears about the breach.
+  assert.deepEqual(Sla_alertRecipients('DB', ['A1'], ['A1', 'A2'], 'R75,RB,D75'), ['A2']);
+});
+
+test('Sla_alertRecipients: the breach still goes out when the reminder was never sent', () => {
+  // R75 and RB due in the same tick: the card must say "overdue", so RB is kept.
+  assert.deepEqual(Sla_alertRecipients('RB', ['A1'], ['A1', 'A2'], ''), ['A1', 'A2']);
+  // D75 sent but RB asked about: the R75 reminder is what counts.
+  assert.deepEqual(Sla_alertRecipients('RB', ['A1'], ['A1'], 'D75'), ['A1']);
+  // No holders at all.
+  assert.deepEqual(Sla_alertRecipients('RB', [], ['A1'], 'R75'), ['A1']);
+});
+
+test('Sla_alertRecipients: unknown flag -> nobody', () => {
+  assert.deepEqual(Sla_alertRecipients('XX', ['T1'], ['A1'], ''), []);
+});
